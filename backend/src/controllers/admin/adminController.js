@@ -5,6 +5,22 @@ const salesService = require('../../services/admin/salesService');
 const riderService = require('../../services/admin/riderService');
 const posOrderService = require('../../services/admin/posOrderService');
 const marketingDealService = require('../../services/admin/marketingDealService');
+const { createMenuEmit, MENU_WS_EVENTS } = require('../../utils/menuEvents');
+
+function emitMarketingDealChange(req, action, deal) {
+  const emit = createMenuEmit(req.app.get('io'));
+  if (!emit) return;
+
+  if (action === 'deal_created') {
+    emit(MENU_WS_EVENTS.DEAL_CREATED, { deal });
+  } else if (action === 'deal_updated') {
+    emit(MENU_WS_EVENTS.DEAL_UPDATED, { deal });
+  } else if (action === 'deal_deleted') {
+    emit(MENU_WS_EVENTS.DEAL_DELETED, { deal });
+  }
+
+  emit(MENU_WS_EVENTS.UPDATED, { action, deal });
+}
 
 async function getSettings(_req, res) {
   const data = await settingsService.getSettings();
@@ -135,16 +151,19 @@ async function getMarketingDeal(req, res) {
 
 async function createMarketingDeal(req, res) {
   const data = await marketingDealService.createDeal(req.body);
+  emitMarketingDealChange(req, 'deal_created', data);
   res.status(201).json({ success: true, data });
 }
 
 async function updateMarketingDeal(req, res) {
   const data = await marketingDealService.updateDeal(req.params.id, req.body);
+  emitMarketingDealChange(req, 'deal_updated', data);
   res.json({ success: true, data });
 }
 
 async function removeMarketingDeal(req, res) {
   const data = await marketingDealService.removeDeal(req.params.id);
+  emitMarketingDealChange(req, 'deal_deleted', data);
   res.json({ success: true, data });
 }
 

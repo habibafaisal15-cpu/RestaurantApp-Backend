@@ -88,10 +88,13 @@ function formatStorefrontDeal(deal) {
     product_ids: parseProductIds(deal.product_ids),
     starts_at: deal.starts_at,
     ends_at: deal.ends_at,
+    price: deal.price != null ? Number(deal.price) : undefined,
+    original_price: deal.original_price != null ? Number(deal.original_price) : undefined,
+    badge: deal.badge || undefined,
   };
 }
 
-function buildStorefrontMenu({ zoneId, categories, products, deals }) {
+function buildStorefrontMenu({ zoneId, categories, products, deals, pricingDeals = deals }) {
   const menu = categories.map((category) => ({
     id: category.id,
     category_name: category.category_name,
@@ -102,7 +105,7 @@ function buildStorefrontMenu({ zoneId, categories, products, deals }) {
     show_in_hero: Boolean(category.show_in_hero),
     items: products
       .filter((p) => p.category_id === category.id)
-      .map((p) => formatStorefrontProduct(p, deals)),
+      .map((p) => formatStorefrontProduct(p, pricingDeals)),
   }));
 
   return {

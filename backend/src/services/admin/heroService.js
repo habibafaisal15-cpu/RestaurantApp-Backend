@@ -1,6 +1,6 @@
 const db = require('../../config/database');
 const { NotFoundError } = require('../../errors/AppError');
-
+const marketingDealService = require('./marketingDealService');
 const HERO_ID = 'default';
 
 function parseJson(value, fallback = {}) {
@@ -37,13 +37,18 @@ async function getHeroContent() {
     ? stored.slides
     : await buildSlidesFromCategories();
 
+  const deals = await marketingDealService.listDeals({
+    active: true,
+    showOnCustomer: true,
+  });
+
   return {
     slides,
     sideCards: stored.sideCards || [],
     topDeals: stored.topDeals || [],
+    deals,
     updatedAt: row.updated_at?.toISOString?.() || row.updated_at,
-  };
-}
+  };}
 
 async function updateHeroContent(payload) {
   const row = await db('hero_content').where({ id: HERO_ID }).first();

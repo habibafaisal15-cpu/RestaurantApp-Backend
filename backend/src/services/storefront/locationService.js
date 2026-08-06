@@ -3,7 +3,30 @@ const { NotFoundError } = require('../../errors/AppError');
 const { locationMatchesZone } = require('../../utils/helpers');
 const { buildStorefrontMenu } = require('../../utils/menuBuilder');
 const catalogService = require('../delivery/catalogService');
+const marketingDealService = require('../admin/marketingDealService');
 const googleMapsService = require('./googleMapsService');
+
+function mapMarketingDealForStorefront(deal) {
+  const price = Number(deal.price) || 0;
+  const originalPrice =
+    deal.originalPrice != null ? Number(deal.originalPrice) : undefined;
+
+  return {
+    id: deal.id,
+    title: deal.title,
+    description: deal.description || '',
+    image_url: deal.image || '',
+    discount_type: 'fixed',
+    discount_value:
+      originalPrice != null ? Math.max(0, originalPrice - price) : price,
+    price,
+    original_price: originalPrice,
+    badge: deal.badge || '',
+    product_ids: null,
+    starts_at: null,
+    ends_at: null,
+  };
+}
 
 async function findActiveZones() {
   return db('delivery_zones').where({ is_active: true });
@@ -122,13 +145,18 @@ async function getMenuForZone(zoneId) {
     .where({ is_active: true, available_for_delivery: true })
     .orderBy('name', 'asc');
 
-  const deals = await catalogService.listDeals({ active_only: true });
+  const pricingDeals = await catalogService.listDeals({ active_only: true });
+  const marketingDeals = await marketingDealService.listDeals({
+    active: true,
+    showOnCustomer: true,
+  });
 
   return buildStorefrontMenu({
     zoneId,
     categories,
     products,
-    deals,
+    deals: marketingDeals.map(mapMarketingDealForStorefront),
+    pricingDeals,
   });
 }
 
