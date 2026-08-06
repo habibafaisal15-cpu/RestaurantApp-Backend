@@ -25,7 +25,7 @@ Health check: `GET /api/v1/health`
 ## Deploy on Railway
 
 1. Connect repo [RestaurantApp-Backend](https://github.com/habibafaisal15-cpu/RestaurantApp-Backend) on [Railway](https://railway.app)
-2. Add environment variables (Neon `DB_*`, `JWT_SECRET`, etc.) — see `backend/.env.example`
+2. Add environment variables — see `backend/.env.example` (Supabase or Neon `DB_*`, `JWT_SECRET`, etc.)
 3. Railway sets `PORT` automatically; WebSockets work on the same service
 4. Run migrations once: `cd backend && npm run migrate && npm run seed` (against Neon from your PC)
 5. Health check: `GET /api/v1/health`

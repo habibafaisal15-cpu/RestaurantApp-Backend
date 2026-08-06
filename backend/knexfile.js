@@ -12,7 +12,11 @@ function buildPgConnection() {
   };
 
   const host = String(connection.host || '');
-  if (host.includes('neon.tech') || process.env.DB_SSL === 'true') {
+  if (
+    host.includes('neon.tech')
+    || host.includes('supabase.co')
+    || process.env.DB_SSL === 'true'
+  ) {
     connection.ssl = { rejectUnauthorized: false };
   }
 
