@@ -2,11 +2,12 @@
   "name": "restaurant-app-backend",
   "private": true,
   "version": "1.0.0",
-  "description": "Vercel serverless wrapper for restaurant delivery API",
-  "dependencies": {
-    "serverless-http": "^3.2.0"
-  },
+  "description": "Restaurant delivery API — deploy backend on Railway",
   "scripts": {
+    "start": "npm start --prefix backend",
     "postinstall": "npm install --prefix backend"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }
