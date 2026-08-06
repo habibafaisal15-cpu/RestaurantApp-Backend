@@ -4,6 +4,7 @@ const { locationMatchesZone } = require('../../utils/helpers');
 const { buildStorefrontMenu } = require('../../utils/menuBuilder');
 const catalogService = require('../delivery/catalogService');
 const marketingDealService = require('../admin/marketingDealService');
+const popularityService = require('./popularityService');
 const googleMapsService = require('./googleMapsService');
 
 function mapMarketingDealForStorefront(deal) {
@@ -150,14 +151,21 @@ async function getMenuForZone(zoneId) {
     active: true,
     showOnCustomer: true,
   });
+  const popular = await popularityService.getPopularSections(3);
 
-  return buildStorefrontMenu({
+  const menu = buildStorefrontMenu({
     zoneId,
     categories,
     products,
     deals: marketingDeals.map(mapMarketingDealForStorefront),
     pricingDeals,
   });
+
+  return {
+    ...menu,
+    best_sellers: popular.best_sellers,
+    top_selling_deals: popular.top_selling_deals,
+  };
 }
 
 module.exports = {

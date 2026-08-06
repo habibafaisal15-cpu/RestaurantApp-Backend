@@ -1,6 +1,7 @@
 const db = require('../../config/database');
 const { NotFoundError } = require('../../errors/AppError');
 const marketingDealService = require('./marketingDealService');
+const popularityService = require('../storefront/popularityService');
 const HERO_ID = 'default';
 
 function parseJson(value, fallback = {}) {
@@ -41,12 +42,15 @@ async function getHeroContent() {
     active: true,
     showOnCustomer: true,
   });
+  const popular = await popularityService.getPopularSections(3);
 
   return {
     slides,
     sideCards: stored.sideCards || [],
     topDeals: stored.topDeals || [],
     deals,
+    best_sellers: popular.best_sellers,
+    top_selling_deals: popular.top_selling_deals,
     updatedAt: row.updated_at?.toISOString?.() || row.updated_at,
   };}
 
