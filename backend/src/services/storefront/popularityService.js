@@ -9,6 +9,7 @@ const ALL_TIME_FROM = '1970-01-01T00:00:00.000Z';
 function formatPopularProduct(product, quantitySold) {
   return {
     id: product.id,
+    product_id: product.id,
     name: product.name,
     title: product.name,
     description: product.description || '',
@@ -23,6 +24,7 @@ function formatPopularDealProduct(product, bestDeal, quantitySold) {
 
   return {
     id: product.id,
+    product_id: product.id,
     name: product.name,
     title: bestDeal.deal.title || product.name,
     description: product.description || bestDeal.deal.title || '',
@@ -42,6 +44,7 @@ function mapMarketingDealFallback(deal) {
 
   return {
     id: deal.id,
+    product_id: deal.productId || null,
     title: deal.title,
     name: deal.title,
     description: deal.description || '',
@@ -117,10 +120,13 @@ async function getTopSellingDealProducts(limit = 3) {
     return dealProducts;
   }
 
-  const marketingDeals = await marketingDealService.listDeals({
-    active: true,
-    showOnCustomer: true,
-  });
+  const marketingDeals = await marketingDealService.listDeals(
+    {
+      active: true,
+      showOnCustomer: true,
+    },
+    { forStorefront: true },
+  );
 
   const seen = new Set(dealProducts.map((deal) => deal.id));
   for (const deal of marketingDeals) {

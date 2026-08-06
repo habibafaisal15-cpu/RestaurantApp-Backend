@@ -38,6 +38,7 @@ function formatDeal(deal) {
     originalPrice: deal.originalPrice != null ? Number(deal.originalPrice) : undefined,
     image: deal.image || '',
     badge: deal.badge || '',
+    productId: deal.productId || deal.product_id || null,
     active: deal.active !== false,
     showOnCustomer: deal.showOnCustomer !== false,
     sortOrder: deal.sortOrder ?? 0,
@@ -68,10 +69,34 @@ function applyFilters(deals, filters = {}) {
   return list.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
 }
 
-async function listDeals(filters = {}) {
+async function resolveProductId(deal) {
+  if (deal.productId) return deal.productId;
+  if (deal.product_id) return deal.product_id;
+  if (!deal.title?.trim()) return null;
+
+  const product = await db('products')
+    .where({ is_active: true, available_for_delivery: true })
+    .whereRaw('LOWER(TRIM(name)) = ?', [deal.title.trim().toLowerCase()])
+    .first();
+
+  return product?.id || null;
+}
+
+async function listDeals(filters = {}, options = {}) {
   const { stored } = await readContent();
   const deals = stored.marketingDeals || [];
-  return applyFilters(deals, filters).map(formatDeal);
+  let list = applyFilters(deals, filters).map(formatDeal);
+
+  if (options.forStorefront) {
+    list = await Promise.all(
+      list.map(async (deal) => ({
+        ...deal,
+        productId: await resolveProductId(deal),
+      })),
+    );
+  }
+
+  return list;
 }
 
 async function getDealById(id) {
@@ -98,6 +123,7 @@ async function createDeal(payload) {
         : undefined,
     image: payload.image ?? '',
     badge: payload.badge?.trim() ?? '',
+    productId: payload.productId || payload.product_id || null,
     active: payload.active ?? true,
     showOnCustomer: payload.showOnCustomer ?? true,
     sortOrder: payload.sortOrder ?? maxSort + 1,
@@ -131,6 +157,14 @@ async function updateDeal(id, payload) {
         : Number(payload.originalPrice),
     image: payload.image != null ? payload.image : current.image,
     badge: payload.badge != null ? payload.badge : current.badge,
+    productId:
+      payload.productId === ''
+        ? null
+        : payload.productId != null
+          ? payload.productId
+          : payload.product_id != null
+            ? payload.product_id
+            : current.productId,
     active: payload.active != null ? payload.active : current.active,
     showOnCustomer:
       payload.showOnCustomer != null ? payload.showOnCustomer : current.showOnCustomer,
@@ -151,4 +185,5 @@ module.exports = {
   createDeal,
   updateDeal,
   removeDeal,
+  resolveProductId,
 };

@@ -86,6 +86,7 @@ function formatStorefrontDeal(deal) {
     discount_type: deal.discount_type,
     discount_value: Number(deal.discount_value),
     product_ids: parseProductIds(deal.product_ids),
+    product_id: deal.product_id || null,
     starts_at: deal.starts_at,
     ends_at: deal.ends_at,
     price: deal.price != null ? Number(deal.price) : undefined,

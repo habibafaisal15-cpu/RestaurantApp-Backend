@@ -23,6 +23,7 @@ function mapMarketingDealForStorefront(deal) {
     price,
     original_price: originalPrice,
     badge: deal.badge || '',
+    product_id: deal.productId || null,
     product_ids: null,
     starts_at: null,
     ends_at: null,
@@ -147,10 +148,13 @@ async function getMenuForZone(zoneId) {
     .orderBy('name', 'asc');
 
   const pricingDeals = await catalogService.listDeals({ active_only: true });
-  const marketingDeals = await marketingDealService.listDeals({
-    active: true,
-    showOnCustomer: true,
-  });
+  const marketingDeals = await marketingDealService.listDeals(
+    {
+      active: true,
+      showOnCustomer: true,
+    },
+    { forStorefront: true },
+  );
   const popular = await popularityService.getPopularSections(3);
 
   const menu = buildStorefrontMenu({

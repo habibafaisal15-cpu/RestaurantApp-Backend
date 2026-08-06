@@ -5,7 +5,44 @@ const {
   generateTrackingToken,
   generateOrderNumber,
 } = require('../../utils/helpers');
+const { findBestDealForProduct } = require('../../utils/menuBuilder');
+const catalogService = require('../delivery/catalogService');
+const marketingDealService = require('../admin/marketingDealService');
 const { findZoneById } = require('./locationService');
+
+async function buildMarketingPriceMap() {
+  const deals = await marketingDealService.listDeals(
+    { active: true, showOnCustomer: true },
+    { forStorefront: true },
+  );
+  const map = new Map();
+
+  for (const deal of deals) {
+    if (deal.productId) {
+      map.set(deal.productId, Number(deal.price));
+    }
+  }
+
+  return map;
+}
+
+async function resolveUnitPrice(product, marketingPrices, catalogDeals) {
+  const marketingPrice = marketingPrices.get(product.id);
+  if (marketingPrice != null) {
+    return marketingPrice;
+  }
+
+  const bestDeal = findBestDealForProduct(
+    product.id,
+    Number(product.price),
+    catalogDeals,
+  );
+  if (bestDeal) {
+    return bestDeal.deal_price;
+  }
+
+  return Number(product.price);
+}
 
 async function getNextOrderNumber(trx) {
   const result = await trx('delivery_orders').count('id as count').first();
@@ -36,9 +73,11 @@ async function createOrder(payload) {
     }
 
     let subtotal = 0;
+    const marketingPrices = await buildMarketingPriceMap();
+    const catalogDeals = await catalogService.listDeals({ active_only: true });
     const lineItems = payload.items.map((item) => {
       const product = productMap[item.product_id];
-      const unitPrice = Number(product.price);
+      const unitPrice = resolveUnitPrice(product, marketingPrices, catalogDeals);
       const totalPrice = unitPrice * item.quantity;
       subtotal += totalPrice;
       return {

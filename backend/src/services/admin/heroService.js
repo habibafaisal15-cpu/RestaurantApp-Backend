@@ -38,10 +38,13 @@ async function getHeroContent() {
     ? stored.slides
     : await buildSlidesFromCategories();
 
-  const deals = await marketingDealService.listDeals({
-    active: true,
-    showOnCustomer: true,
-  });
+  const deals = await marketingDealService.listDeals(
+    {
+      active: true,
+      showOnCustomer: true,
+    },
+    { forStorefront: true },
+  );
   const popular = await popularityService.getPopularSections(3);
 
   return {
