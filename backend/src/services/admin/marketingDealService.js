@@ -3,7 +3,7 @@ const { NotFoundError } = require('../../errors/AppError');
 const { generateId } = require('../../utils/helpers');
 
 const HERO_ID = 'default';
-
+const DEALS_CATEGORY_NAME = 'Deals';
 function parseJson(value, fallback = {}) {
   if (value == null) return fallback;
   if (typeof value === 'object') return value;
@@ -74,28 +74,159 @@ async function resolveProductId(deal) {
   if (deal.product_id) return deal.product_id;
   if (!deal.title?.trim()) return null;
 
-  const product = await db('products')
-    .where({ is_active: true, available_for_delivery: true })
-    .whereRaw('LOWER(TRIM(name)) = ?', [deal.title.trim().toLowerCase()])
-    .first();
+  const title = deal.title.trim().toLowerCase();
 
-  return product?.id || null;
+  let product = await db('products')
+    .where({ is_active: true, available_for_delivery: true })
+    .whereRaw('LOWER(TRIM(name)) = ?', [title])
+    .first();
+  if (product) return product.id;
+
+  product = await db('products')
+    .where({ is_active: true, available_for_delivery: true })
+    .whereRaw('LOWER(name) LIKE ?', [`%${title}%`])
+    .orderBy('name', 'asc')
+    .first();
+  if (product) return product.id;
+
+  const candidates = await db('products')
+    .where({ is_active: true, available_for_delivery: true })
+    .select('id', 'name');
+
+  let bestMatch = null;
+  for (const candidate of candidates) {
+    const name = candidate.name.trim().toLowerCase();
+    if (title.includes(name) && (!bestMatch || name.length > bestMatch.name.length)) {
+      bestMatch = candidate;
+    }
+  }
+
+  return bestMatch?.id || null;
 }
 
+function normalizeImageUrl(image) {
+  if (!image) return null;
+  const value = String(image).trim();
+  if (!value) return null;
+  if (value.startsWith('http://') || value.startsWith('https://')) {
+    try {
+      const url = new URL(value);
+      return url.pathname || null;
+    } catch {
+      return value;
+    }
+  }
+  return value;
+}
+
+async function ensureDealsCategory() {
+  const existing = await db('menu_categories')
+    .whereRaw('LOWER(category_name) = ?', [DEALS_CATEGORY_NAME.toLowerCase()])
+    .first();
+
+  if (existing) return existing.id;
+
+  const categoryId = generateId();
+  await db('menu_categories').insert({
+    id: categoryId,
+    category_name: DEALS_CATEGORY_NAME,
+    display_order: 999,
+    is_active: false,
+    show_in_hero: false,
+  });
+
+  return categoryId;
+}
+
+async function updateProductForDeal(deal) {
+  if (!deal.productId) return null;
+
+  const existing = await db('products').where({ id: deal.productId }).first();
+  if (!existing) return syncProductForDeal(deal);
+
+  await db('products')
+    .where({ id: deal.productId })
+    .update({
+      name: deal.title.trim().slice(0, 100),
+      description: deal.description || '',
+      price: Number(deal.price) || 0,
+      image_url: normalizeImageUrl(deal.image),
+      is_active: deal.active !== false && deal.showOnCustomer !== false,
+      available_for_delivery: true,
+      in_stock: true,
+    });
+
+  return deal.productId;
+}
+
+async function syncProductForDeal(deal) {
+  const linkedProductId = deal.productId || (await resolveProductId(deal));
+  if (linkedProductId) {
+    await updateProductForDeal({ ...deal, productId: linkedProductId });
+    return linkedProductId;
+  }
+
+  const categoryId = await ensureDealsCategory();
+  const productId = generateId();
+
+  await db('products').insert({
+    id: productId,
+    category_id: categoryId,
+    name: deal.title.trim().slice(0, 100),
+    description: deal.description || '',
+    price: Number(deal.price) || 0,
+    image_url: normalizeImageUrl(deal.image),
+    available_for_delivery: true,
+    in_stock: true,
+    is_active: deal.active !== false && deal.showOnCustomer !== false,
+  });
+
+  return productId;
+}
+
+async function persistDealProductId(dealId, productId, stored) {
+  const deals = stored.marketingDeals || [];
+  const index = deals.findIndex((entry) => entry.id === dealId);
+  if (index === -1 || deals[index].productId === productId) {
+    return false;
+  }
+
+  deals[index].productId = productId;
+  stored.marketingDeals = deals;
+  await writeContent(stored);
+  return true;
+}
 async function listDeals(filters = {}, options = {}) {
   const { stored } = await readContent();
   const deals = stored.marketingDeals || [];
   let list = applyFilters(deals, filters).map(formatDeal);
 
   if (options.forStorefront) {
-    list = await Promise.all(
-      list.map(async (deal) => ({
-        ...deal,
-        productId: await resolveProductId(deal),
-      })),
-    );
-  }
+    const { stored } = await readContent();
+    let contentChanged = false;
 
+    list = await Promise.all(
+      list.map(async (deal) => {
+        let productId = deal.productId || (await resolveProductId(deal));
+        if (!productId) {
+          productId = await syncProductForDeal(deal);
+          contentChanged =
+            (await persistDealProductId(deal.id, productId, stored)) || contentChanged;
+        } else {
+          await updateProductForDeal({ ...deal, productId });
+        }
+
+        return {
+          ...deal,
+          productId,
+        };
+      }),
+    );
+
+    if (contentChanged) {
+      // stored was mutated inside persistDealProductId via writeContent
+    }
+  }
   return list;
 }
 
@@ -130,6 +261,8 @@ async function createDeal(payload) {
     createdAt: now,
     updatedAt: now,
   };
+
+  deal.productId = await syncProductForDeal(deal);
 
   deals.unshift(deal);
   await writeContent({ ...stored, marketingDeals: deals });
@@ -171,6 +304,8 @@ async function updateDeal(id, payload) {
     updatedAt: new Date().toISOString(),
   };
 
+  deals[index].productId = await syncProductForDeal(deals[index]);
+
   await writeContent({ ...stored, marketingDeals: deals });
   return formatDeal(deals[index]);
 }
@@ -186,4 +321,5 @@ module.exports = {
   updateDeal,
   removeDeal,
   resolveProductId,
+  syncProductForDeal,
 };
