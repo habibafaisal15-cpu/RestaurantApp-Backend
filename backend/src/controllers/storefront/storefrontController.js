@@ -28,11 +28,13 @@ const createOrder = asyncHandler(async (req, res) => {
   const adminOrder = await deliveryService.getOrderById(order.id);
 
   const io = req.app.get('io');
-  io.to('admin:delivery').emit(WS_EVENTS.ORDER_CREATED, {
-    order_id: order.id,
-    order_number: order.order_number,
-    order: adminOrder,
-  });
+  if (io?.emit) {
+    io.to('admin:delivery').emit(WS_EVENTS.ORDER_CREATED, {
+      order_id: order.id,
+      order_number: order.order_number,
+      order: adminOrder,
+    });
+  }
 
   const emit = createCustomerEmit(io);
   emitCustomerOrderEvent(

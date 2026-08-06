@@ -1,7 +1,9 @@
 const path = require('path');
 const fs = require('fs');
 
-const UPLOAD_ROOT = path.join(__dirname, '../../uploads');
+const UPLOAD_ROOT = process.env.VERCEL
+  ? path.join('/tmp', 'restaurant-uploads')
+  : path.join(__dirname, '../../uploads');
 
 function ensureUploadDirs() {
   for (const dir of ['products', 'deals', 'categories', 'hero']) {

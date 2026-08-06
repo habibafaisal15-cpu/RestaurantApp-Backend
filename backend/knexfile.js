@@ -2,15 +2,26 @@ require('dotenv').config();
 
 const client = process.env.DB_CLIENT || 'pg';
 
-const pgConfig = {
-  client: 'pg',
-  connection: {
+function buildPgConnection() {
+  const connection = {
     host: process.env.DB_HOST || 'localhost',
     port: Number(process.env.DB_PORT) || 5432,
     user: process.env.DB_USER || 'postgres',
     password: process.env.DB_PASSWORD || 'postgres',
     database: process.env.DB_NAME || 'restaurant_delivery',
-  },
+  };
+
+  const host = String(connection.host || '');
+  if (host.includes('neon.tech') || process.env.DB_SSL === 'true') {
+    connection.ssl = { rejectUnauthorized: false };
+  }
+
+  return connection;
+}
+
+const pgConfig = {
+  client: 'pg',
+  connection: buildPgConnection(),
   pool: {
     min: 2,
     max: 10,

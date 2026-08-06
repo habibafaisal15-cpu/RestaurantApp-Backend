@@ -3,6 +3,8 @@ const { buildCustomerNotification } = require('./orderTimer');
 
 function createCustomerEmit(io) {
   return (event, payload) => {
+    if (!io) return;
+
     io.to('admin:delivery').emit(event, payload);
 
     if (payload?.tracking_token) {

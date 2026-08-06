@@ -5,10 +5,12 @@ const v1Routes = require('./routes/v1');
 const errorHandler = require('./middleware/errorHandler');
 const { corsOrigin } = require('./config/env');
 const { ensureUploadDirs } = require('./config/upload');
+const { createNoopIo } = require('./utils/noopIo');
 
 ensureUploadDirs();
 
 const app = express();
+app.set('io', createNoopIo());
 
 app.use(cors({
   origin: corsOrigin === '*' ? true : corsOrigin.split(',').map((o) => o.trim()),

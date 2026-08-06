@@ -1,0 +1,14 @@
+{
+  "version": 2,
+  "installCommand": "npm install && npm install --prefix backend",
+  "buildCommand": "echo \"Backend ready\"",
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/api" }
+  ],
+  "crons": [
+    {
+      "path": "/api/v1/cron/expire-orders",
+      "schedule": "*/5 * * * *"
+    }
+  ]
+}
