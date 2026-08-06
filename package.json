@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "description": "Restaurant delivery API — deploy backend on Railway",
   "scripts": {
-    "start": "npm start --prefix backend",
+    "start": "node backend/src/server.js",
     "postinstall": "npm install --prefix backend"
   },
   "engines": {
