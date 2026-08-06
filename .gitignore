@@ -1,0 +1,46 @@
+# Dependencies
+node_modules/
+
+# Environment secrets
+.env
+.env.local
+.env.*.local
+backend/.env
+
+# Build output
+dist/
+build/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Test coverage
+coverage/
+
+# Database
+*.sqlite
+backend/database/*.db
+
+# Uploaded media (use cloud storage in production)
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# Frontend clones (separate repos)
+resturant-frontend/
+resturant-admin-frontend/
+resturant-admin-frontend-bak/
+resturant-admin-frontend-new/
+_github-check/
+
+# Cursor / local
+.cursor/
+assets/

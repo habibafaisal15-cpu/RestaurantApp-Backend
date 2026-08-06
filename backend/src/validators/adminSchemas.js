@@ -1,0 +1,116 @@
+const { z } = require('zod');
+
+const boolish = z.preprocess((val) => {
+  if (val === 'true' || val === true) return true;
+  if (val === 'false' || val === false) return false;
+  return val;
+}, z.boolean());
+
+const updateSettingsSchema = z
+  .object({
+    restaurantName: z.string().min(1).max(150).optional(),
+    tagline: z.string().max(255).optional(),
+    logo: z.string().max(500).optional(),
+    phone: z.string().max(30).optional(),
+    email: z.string().email().optional(),
+    address: z.string().max(255).optional(),
+    taxPercent: z.coerce.number().min(0).max(100).optional(),
+    serviceChargePercent: z.coerce.number().min(0).max(100).optional(),
+    deliveryFee: z.coerce.number().min(0).optional(),
+    currency: z.string().max(10).optional(),
+    isOpen: boolish.optional(),
+    announcement: z.string().max(500).optional(),
+    slipFooter: z.string().max(500).optional(),
+    autoSlipWalkIn: boolish.optional(),
+    autoSlipOnlineAccept: boolish.optional(),
+    openingHours: z.record(z.any()).optional(),
+  })
+  .refine((data) => Object.keys(data).length > 0, {
+    message: 'Provide at least one field to update',
+  });
+
+const updateHeroSchema = z.object({
+  slides: z.array(z.any()).optional(),
+  sideCards: z.array(z.any()).optional(),
+  topDeals: z.array(z.any()).optional(),
+});
+
+const sideCardsSchema = z.object({
+  sideCards: z.array(z.any()),
+});
+
+const slidesSchema = z.object({
+  slides: z.array(z.any()),
+});
+
+const topDealsSchema = z.object({
+  topDeals: z.array(z.any()),
+});
+
+const generateSlipSchema = z.object({
+  orderId: z.string().uuid(),
+  slipType: z.enum(['kitchen', 'delivery', 'receipt']).default('kitchen'),
+});
+
+const createRiderSchema = z.object({
+  name: z.string().min(1).max(100),
+  phone: z.string().min(5).max(20),
+  vehicleNumber: z.string().max(50).optional(),
+  vehicleType: z.string().max(50).optional(),
+});
+
+const updateRiderSchema = z
+  .object({
+    name: z.string().min(1).max(100).optional(),
+    phone: z.string().min(5).max(20).optional(),
+    vehicleNumber: z.string().max(50).optional(),
+    vehicleType: z.string().max(50).optional(),
+    status: z.enum(['available', 'busy', 'offline']).optional(),
+    active: boolish.optional(),
+  })
+  .refine((data) => Object.keys(data).length > 0, {
+    message: 'Provide at least one field to update',
+  });
+
+const walkInItemSchema = z.object({
+  menuItemId: z.string().uuid(),
+  quantity: z.coerce.number().int().positive(),
+  notes: z.string().optional(),
+});
+
+const walkInOrderSchema = z.object({
+  type: z.enum(['DINE_IN', 'TAKEAWAY']).default('DINE_IN'),
+  items: z.array(walkInItemSchema).min(1),
+  customer: z
+    .object({
+      name: z.string().optional(),
+      phone: z.string().optional(),
+    })
+    .optional(),
+  tableNumber: z.string().optional(),
+  paymentMethod: z.enum(['cash', 'card', 'online']).default('cash'),
+  paymentStatus: z.enum(['paid', 'pending']).default('paid'),
+  discount: z.coerce.number().min(0).optional(),
+  cashierName: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+function validateBody(schema) {
+  return (req, _res, next) => {
+    req.body = schema.parse(req.body);
+    next();
+  };
+}
+
+module.exports = {
+  updateSettingsSchema,
+  updateHeroSchema,
+  sideCardsSchema,
+  slidesSchema,
+  topDealsSchema,
+  generateSlipSchema,
+  createRiderSchema,
+  updateRiderSchema,
+  walkInOrderSchema,
+  validateBody,
+};
