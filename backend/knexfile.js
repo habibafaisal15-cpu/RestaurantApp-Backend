@@ -15,6 +15,7 @@ function buildPgConnection() {
   if (
     host.includes('neon.tech')
     || host.includes('supabase.co')
+    || host.includes('supabase.com')
     || process.env.DB_SSL === 'true'
   ) {
     connection.ssl = { rejectUnauthorized: false };
