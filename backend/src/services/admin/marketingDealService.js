@@ -37,6 +37,7 @@ function formatDeal(deal) {
     price: Number(deal.price),
     originalPrice: deal.originalPrice != null ? Number(deal.originalPrice) : undefined,
     image: deal.image || '',
+    image_url: deal.image || deal.image_url || '',
     badge: deal.badge || '',
     productId: deal.productId || deal.product_id || null,
     active: deal.active !== false,
@@ -108,6 +109,7 @@ function normalizeImageUrl(image) {
   if (!image) return null;
   const value = String(image).trim();
   if (!value) return null;
+  if (value.startsWith('/uploads/') || value.startsWith('/')) return value;
   if (value.startsWith('http://') || value.startsWith('https://')) {
     try {
       const url = new URL(value);

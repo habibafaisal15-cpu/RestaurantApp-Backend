@@ -16,7 +16,7 @@ function mapMarketingDealForStorefront(deal) {
     id: deal.id,
     title: deal.title,
     description: deal.description || '',
-    image_url: deal.image || '',
+    image_url: deal.image || deal.image_url || '',
     discount_type: 'fixed',
     discount_value:
       originalPrice != null ? Math.max(0, originalPrice - price) : price,
