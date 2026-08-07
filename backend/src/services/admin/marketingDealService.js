@@ -201,35 +201,8 @@ async function persistDealProductId(dealId, productId, stored) {
 async function listDeals(filters = {}, options = {}) {
   const { stored } = await readContent();
   const deals = stored.marketingDeals || [];
-  let list = applyFilters(deals, filters).map(formatDeal);
-
-  if (options.forStorefront) {
-    const { stored } = await readContent();
-    let contentChanged = false;
-
-    list = await Promise.all(
-      list.map(async (deal) => {
-        let productId = deal.productId || (await resolveProductId(deal));
-        if (!productId) {
-          productId = await syncProductForDeal(deal);
-          contentChanged =
-            (await persistDealProductId(deal.id, productId, stored)) || contentChanged;
-        } else {
-          await updateProductForDeal({ ...deal, productId });
-        }
-
-        return {
-          ...deal,
-          productId,
-        };
-      }),
-    );
-
-    if (contentChanged) {
-      // stored was mutated inside persistDealProductId via writeContent
-    }
-  }
-  return list;
+  // Storefront must stay read-only — product sync happens on admin create/update.
+  return applyFilters(deals, filters).map(formatDeal);
 }
 
 async function getDealById(id) {

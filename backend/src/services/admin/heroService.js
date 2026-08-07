@@ -38,14 +38,16 @@ async function getHeroContent() {
     ? stored.slides
     : await buildSlidesFromCategories();
 
-  const deals = await marketingDealService.listDeals(
-    {
-      active: true,
-      showOnCustomer: true,
-    },
-    { forStorefront: true },
-  );
-  const popular = await popularityService.getPopularSections(3);
+  const [deals, popular] = await Promise.all([
+    marketingDealService.listDeals(
+      {
+        active: true,
+        showOnCustomer: true,
+      },
+      { forStorefront: true },
+    ),
+    popularityService.getPopularSections(3),
+  ]);
 
   return {
     slides,
@@ -55,7 +57,8 @@ async function getHeroContent() {
     best_sellers: popular.best_sellers,
     top_selling_deals: popular.top_selling_deals,
     updatedAt: row.updated_at?.toISOString?.() || row.updated_at,
-  };}
+  };
+}
 
 async function updateHeroContent(payload) {
   const row = await db('hero_content').where({ id: HERO_ID }).first();

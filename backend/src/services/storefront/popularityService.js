@@ -5,6 +5,11 @@ const marketingDealService = require('../admin/marketingDealService');
 const { findBestDealForProduct } = require('../../utils/menuBuilder');
 
 const ALL_TIME_FROM = '1970-01-01T00:00:00.000Z';
+const POPULAR_TTL_MS = 60_000;
+
+let popularCache = null;
+let popularCachedAt = 0;
+let popularInflight = null;
 
 function formatPopularProduct(product, quantitySold) {
   return {
@@ -68,18 +73,21 @@ async function loadActiveProducts(productIds = []) {
   return new Map(rows.map((row) => [row.id, row]));
 }
 
-async function getTopSellingProducts(limit = 3) {
-  const topItems = await salesService.getByItem({
+async function loadSalesByItem() {
+  return salesService.getByItem({
     from: ALL_TIME_FROM,
     to: new Date().toISOString(),
     range: 'custom',
   });
+}
 
+async function getTopSellingProducts(limit = 3, topItems = null) {
+  const ranked = topItems || (await loadSalesByItem());
   const productMap = await loadActiveProducts(
-    topItems.map((item) => item.menuItemId).filter(Boolean),
+    ranked.map((item) => item.menuItemId).filter(Boolean),
   );
 
-  return topItems
+  return ranked
     .filter((item) => productMap.has(item.menuItemId))
     .slice(0, limit)
     .map((item) =>
@@ -87,19 +95,17 @@ async function getTopSellingProducts(limit = 3) {
     );
 }
 
-async function getTopSellingDealProducts(limit = 3) {
-  const catalogDeals = await catalogService.listDeals({ active_only: true });
-  const topItems = await salesService.getByItem({
-    from: ALL_TIME_FROM,
-    to: new Date().toISOString(),
-    range: 'custom',
-  });
+async function getTopSellingDealProducts(limit = 3, topItems = null) {
+  const [catalogDeals, ranked] = await Promise.all([
+    catalogService.listDeals({ active_only: true }),
+    topItems ? Promise.resolve(topItems) : loadSalesByItem(),
+  ]);
 
   const productMap = await loadActiveProducts(
-    topItems.map((item) => item.menuItemId).filter(Boolean),
+    ranked.map((item) => item.menuItemId).filter(Boolean),
   );
 
-  const dealProducts = topItems
+  const dealProducts = ranked
     .map((item) => {
       const product = productMap.get(item.menuItemId);
       if (!product) return null;
@@ -139,10 +145,11 @@ async function getTopSellingDealProducts(limit = 3) {
   return dealProducts.slice(0, limit);
 }
 
-async function getPopularSections(limit = 3) {
+async function computePopularSections(limit = 3) {
+  const topItems = await loadSalesByItem();
   const [bestSellers, topSellingDeals] = await Promise.all([
-    getTopSellingProducts(limit),
-    getTopSellingDealProducts(limit),
+    getTopSellingProducts(limit, topItems),
+    getTopSellingDealProducts(limit, topItems),
   ]);
 
   return {
@@ -151,8 +158,37 @@ async function getPopularSections(limit = 3) {
   };
 }
 
+async function getPopularSections(limit = 3) {
+  const now = Date.now();
+  if (popularCache && now - popularCachedAt < POPULAR_TTL_MS) {
+    return popularCache;
+  }
+  if (popularInflight) {
+    return popularInflight;
+  }
+
+  popularInflight = computePopularSections(limit)
+    .then((result) => {
+      popularCache = result;
+      popularCachedAt = Date.now();
+      return result;
+    })
+    .finally(() => {
+      popularInflight = null;
+    });
+
+  return popularInflight;
+}
+
+function clearPopularCache() {
+  popularCache = null;
+  popularCachedAt = 0;
+  popularInflight = null;
+}
+
 module.exports = {
   getTopSellingProducts,
   getTopSellingDealProducts,
   getPopularSections,
+  clearPopularCache,
 };

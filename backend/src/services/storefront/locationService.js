@@ -144,23 +144,24 @@ async function selectLiveLocation({ latitude, longitude, address }) {
 async function getMenuForZone(zoneId) {
   await findZoneById(zoneId);
 
-  const categories = await db('menu_categories')
-    .where({ is_active: true })
-    .orderBy('display_order', 'asc');
-
-  const products = await db('products')
-    .where({ is_active: true, available_for_delivery: true })
-    .orderBy('name', 'asc');
-
-  const pricingDeals = await catalogService.listDeals({ active_only: true });
-  const marketingDeals = await marketingDealService.listDeals(
-    {
-      active: true,
-      showOnCustomer: true,
-    },
-    { forStorefront: true },
-  );
-  const popular = await popularityService.getPopularSections(3);
+  const [categories, products, pricingDeals, marketingDeals, popular] =
+    await Promise.all([
+      db('menu_categories')
+        .where({ is_active: true })
+        .orderBy('display_order', 'asc'),
+      db('products')
+        .where({ is_active: true, available_for_delivery: true })
+        .orderBy('name', 'asc'),
+      catalogService.listDeals({ active_only: true }),
+      marketingDealService.listDeals(
+        {
+          active: true,
+          showOnCustomer: true,
+        },
+        { forStorefront: true },
+      ),
+      popularityService.getPopularSections(3),
+    ]);
 
   const menu = buildStorefrontMenu({
     zoneId,
