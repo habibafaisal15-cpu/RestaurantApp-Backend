@@ -6,9 +6,16 @@ const riderService = require('../../services/admin/riderService');
 const posOrderService = require('../../services/admin/posOrderService');
 const marketingDealService = require('../../services/admin/marketingDealService');
 const deliveryLocationService = require('../../services/admin/deliveryLocationService');
+const popularityService = require('../../services/storefront/popularityService');
 const { createMenuEmit, MENU_WS_EVENTS } = require('../../utils/menuEvents');
 
 function emitMarketingDealChange(req, action, deal) {
+  try {
+    popularityService.clearPopularCache?.();
+  } catch {
+    // ignore cache clear failures
+  }
+
   const emit = createMenuEmit(req.app.get('io'));
   if (!emit) return;
 

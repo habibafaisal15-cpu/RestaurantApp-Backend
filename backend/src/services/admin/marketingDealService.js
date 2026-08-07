@@ -144,7 +144,7 @@ async function updateProductForDeal(deal) {
   if (!deal.productId) return null;
 
   const existing = await db('products').where({ id: deal.productId }).first();
-  if (!existing) return syncProductForDeal(deal);
+  if (!existing) return null;
 
   await db('products')
     .where({ id: deal.productId })
@@ -162,7 +162,18 @@ async function updateProductForDeal(deal) {
 }
 
 async function syncProductForDeal(deal) {
-  const linkedProductId = deal.productId || (await resolveProductId(deal));
+  let linkedProductId = deal.productId || deal.product_id || null;
+
+  if (linkedProductId) {
+    const existing = await db('products').where({ id: linkedProductId }).first();
+    if (existing) {
+      await updateProductForDeal({ ...deal, productId: linkedProductId });
+      return linkedProductId;
+    }
+    linkedProductId = null;
+  }
+
+  linkedProductId = await resolveProductId({ ...deal, productId: null, product_id: null });
   if (linkedProductId) {
     await updateProductForDeal({ ...deal, productId: linkedProductId });
     return linkedProductId;
@@ -237,7 +248,11 @@ async function createDeal(payload) {
     updatedAt: now,
   };
 
-  deal.productId = await syncProductForDeal(deal);
+  try {
+    deal.productId = await syncProductForDeal(deal);
+  } catch (err) {
+    console.error('Failed to sync deal product on create:', err.message);
+  }
 
   deals.unshift(deal);
   await writeContent({ ...stored, marketingDeals: deals });
@@ -279,7 +294,11 @@ async function updateDeal(id, payload) {
     updatedAt: new Date().toISOString(),
   };
 
-  deals[index].productId = await syncProductForDeal(deals[index]);
+  try {
+    deals[index].productId = await syncProductForDeal(deals[index]);
+  } catch (err) {
+    console.error('Failed to sync deal product on update:', err.message);
+  }
 
   await writeContent({ ...stored, marketingDeals: deals });
   return formatDeal(deals[index]);
