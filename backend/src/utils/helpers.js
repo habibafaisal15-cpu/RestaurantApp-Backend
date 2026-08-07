@@ -40,7 +40,9 @@ function locationMatchesZone(location, serviceArea) {
   const lat = location.latitude ?? location.lat;
   const lng = location.longitude ?? location.lng;
 
-  // Hub zones (admin Delivery Locations): when GPS is present, only radius/bounds/polygon count.
+  // Hub zones (admin Delivery Locations): GPS must be inside the delivery radius.
+  // Do not fall back to loose area-name matching when a radius hub is configured —
+  // that was incorrectly accepting far-away pins whose reverse-geocode text matched.
   if (lat != null && lng != null) {
     const hasHubRadius = Boolean(area.center && area.radius_km);
     if (hasHubRadius) {
@@ -51,6 +53,10 @@ function locationMatchesZone(location, serviceArea) {
     }
     if (area.polygon && pointInPolygon(lat, lng, area.polygon)) {
       return true;
+    }
+    // GPS present but this zone has no geo shape — skip text matching for this zone.
+    if (area.center || area.bounds || area.polygon) {
+      return false;
     }
   }
 

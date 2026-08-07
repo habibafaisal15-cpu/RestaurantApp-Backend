@@ -39,8 +39,18 @@ function pointInPolygon(lat, lng, polygon) {
 }
 
 function pointInCircle(lat, lng, center, radiusKm) {
-  if (!center?.lat || !center?.lng || !radiusKm) return false;
-  return haversineKm(lat, lng, center.lat, center.lng) <= radiusKm;
+  const centerLat = Number(center?.lat ?? center?.latitude);
+  const centerLng = Number(center?.lng ?? center?.longitude);
+  const radius = Number(radiusKm);
+  if (
+    !Number.isFinite(centerLat) ||
+    !Number.isFinite(centerLng) ||
+    !Number.isFinite(radius) ||
+    radius <= 0
+  ) {
+    return false;
+  }
+  return haversineKm(Number(lat), Number(lng), centerLat, centerLng) <= radius;
 }
 
 module.exports = {

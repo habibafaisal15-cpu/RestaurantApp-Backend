@@ -103,10 +103,25 @@ async function resolveLocationInput(input) {
   }
 
   if (input.latitude != null && input.longitude != null) {
-    const geocoded = await googleMapsService.reverseGeocode(input.latitude, input.longitude);
+    const latitude = Number(input.latitude);
+    const longitude = Number(input.longitude);
+    let geocoded = {};
+    try {
+      geocoded = await googleMapsService.reverseGeocode(latitude, longitude);
+    } catch {
+      geocoded = {};
+    }
+
+    // Keep the user's exact pin/GPS for zone matching — reverse geocode is address-only.
     return buildLocationPayload({
       ...geocoded,
-      formatted_address: input.address || input.formatted_address || geocoded.formatted_address,
+      latitude,
+      longitude,
+      formatted_address:
+        input.address ||
+        input.formatted_address ||
+        geocoded.formatted_address ||
+        `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`,
     });
   }
 
@@ -127,17 +142,30 @@ async function resolveLocationInput(input) {
 }
 
 async function selectLiveLocation({ latitude, longitude, address }) {
-  const geocoded = await googleMapsService.reverseGeocode(latitude, longitude);
+  const lat = Number(latitude);
+  const lng = Number(longitude);
+  let geocoded = {};
+  try {
+    geocoded = await googleMapsService.reverseGeocode(lat, lng);
+  } catch {
+    geocoded = {};
+  }
+
   const location = buildLocationPayload({
     ...geocoded,
-    formatted_address: address || geocoded.formatted_address,
+    latitude: lat,
+    longitude: lng,
+    formatted_address:
+      address ||
+      geocoded.formatted_address ||
+      `${lat.toFixed(5)}, ${lng.toFixed(5)}`,
   });
 
   const serviceability = await checkLocationServiceability(location);
 
   return {
     ...serviceability,
-    geocoding_source: geocoded.source || 'google',
+    geocoding_source: geocoded.source || 'gps',
   };
 }
 
