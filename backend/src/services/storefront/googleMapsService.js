@@ -66,34 +66,108 @@ async function googleFetch(url) {
 
 async function reverseGeocode(latitude, longitude) {
   if (!googleMapsApiKey) {
-    return fallbackFromCoordinates(latitude, longitude);
+    return nominatimReverse(latitude, longitude);
   }
 
-  const url = `${GEOCODE_URL}?latlng=${latitude},${longitude}&key=${googleMapsApiKey}`;
-  const data = await googleFetch(url);
-  if (!data?.results?.length) return fallbackFromCoordinates(latitude, longitude);
+  try {
+    const url = `${GEOCODE_URL}?latlng=${latitude},${longitude}&key=${googleMapsApiKey}`;
+    const data = await googleFetch(url);
+    if (!data?.results?.length) return nominatimReverse(latitude, longitude);
 
-  return {
-    ...parseGeocodeResult(data.results[0]),
-    source: 'google',
-  };
+    return {
+      ...parseGeocodeResult(data.results[0]),
+      source: 'google',
+    };
+  } catch {
+    return nominatimReverse(latitude, longitude);
+  }
 }
 
 async function geocodeAddress(address) {
-  if (!googleMapsApiKey) {
-    throw new BadRequestError('Google Maps API key is not configured for address search');
+  const query = String(address || '').trim();
+  if (!query) {
+    throw new BadRequestError('Address is required');
   }
 
-  const url = `${GEOCODE_URL}?address=${encodeURIComponent(address)}&key=${googleMapsApiKey}`;
-  const data = await googleFetch(url);
-  if (!data?.results?.length) {
+  if (googleMapsApiKey) {
+    try {
+      const url = `${GEOCODE_URL}?address=${encodeURIComponent(query)}&key=${googleMapsApiKey}`;
+      const data = await googleFetch(url);
+      if (data?.results?.length) {
+        return {
+          ...parseGeocodeResult(data.results[0]),
+          source: 'google',
+        };
+      }
+    } catch {
+      // Fall through to OpenStreetMap
+    }
+  }
+
+  return nominatimGeocode(query);
+}
+
+async function nominatimGeocode(address) {
+  const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(address)}`;
+  const response = await fetch(url, {
+    headers: {
+      'User-Agent': 'RestaurantApp-DeliveryLocations/1.0',
+      Accept: 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    throw new BadRequestError('Address lookup failed');
+  }
+
+  const results = await response.json();
+  if (!Array.isArray(results) || !results.length) {
     throw new BadRequestError('Address not found');
   }
 
+  const result = results[0];
   return {
-    ...parseGeocodeResult(data.results[0]),
-    source: 'google',
+    formatted_address: result.display_name,
+    place_id: result.place_id ? String(result.place_id) : null,
+    latitude: Number(result.lat),
+    longitude: Number(result.lon),
+    pincode: null,
+    area: null,
+    city: null,
+    state: null,
+    country: null,
+    source: 'openstreetmap',
   };
+}
+
+async function nominatimReverse(latitude, longitude) {
+  try {
+    const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`;
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'RestaurantApp-DeliveryLocations/1.0',
+        Accept: 'application/json',
+      },
+    });
+    if (!response.ok) return fallbackFromCoordinates(latitude, longitude);
+    const result = await response.json();
+    if (!result?.display_name) return fallbackFromCoordinates(latitude, longitude);
+
+    return {
+      formatted_address: result.display_name,
+      place_id: result.place_id ? String(result.place_id) : null,
+      latitude: Number(result.lat ?? latitude),
+      longitude: Number(result.lon ?? longitude),
+      pincode: result.address?.postcode || null,
+      area: result.address?.suburb || result.address?.neighbourhood || null,
+      city: result.address?.city || result.address?.town || result.address?.village || null,
+      state: result.address?.state || null,
+      country: result.address?.country || null,
+      source: 'openstreetmap',
+    };
+  } catch {
+    return fallbackFromCoordinates(latitude, longitude);
+  }
 }
 
 async function geocodePlaceId(placeId) {
@@ -146,11 +220,11 @@ async function autocomplete(input, sessionToken) {
 
 function getMapsConfig() {
   return {
-    maps_enabled: Boolean(googleMapsApiKey || process.env.GOOGLE_MAPS_BROWSER_KEY),
+    maps_enabled: true,
     browser_api_key: process.env.GOOGLE_MAPS_BROWSER_KEY || null,
-    geocoding_enabled: Boolean(googleMapsApiKey),
+    geocoding_enabled: true,
     autocomplete_enabled: Boolean(googleMapsApiKey),
-    default_center: { lat: 31.5497, lng: 74.3436 },
+    default_center: { lat: 24.8607, lng: 67.0011 },
     default_zoom: 13,
   };
 }
