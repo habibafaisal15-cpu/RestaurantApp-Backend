@@ -1,4 +1,8 @@
+const path = require('path');
+const { v4: uuidv4 } = require('uuid');
 const catalogService = require('../../services/delivery/catalogService');
+const mediaService = require('../../services/mediaService');
+const { writeBufferToDisk } = require('../../middleware/upload');
 const { createMenuEmit, MENU_WS_EVENTS } = require('../../utils/menuEvents');
 
 function getEmit(req) {
@@ -101,21 +105,47 @@ async function deleteDeal(req, res) {
   res.json({ success: true, data: result });
 }
 
-async function uploadMedia(req, res) {
-  if (!req.file) {
-    return res.status(400).json({
-      success: false,
-      message: 'No image file provided',
+async function uploadMedia(req, res, next) {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'No image file provided',
+      });
+    }
+
+    const folder = req.params.folder;
+    const ext = path.extname(req.file.originalname || '').toLowerCase() || '.jpg';
+    const filename = `${uuidv4()}${ext}`;
+    const buffer = req.file.buffer;
+
+    if (!buffer?.length) {
+      return res.status(400).json({
+        success: false,
+        message: 'No image file provided',
+      });
+    }
+
+    const saved = await mediaService.saveMediaFile({
+      folder,
+      filename,
+      mimeType: req.file.mimetype,
+      buffer,
     });
+
+    try {
+      writeBufferToDisk(folder, filename, buffer);
+    } catch {
+      // Disk is optional on ephemeral hosts; DB is the source of truth.
+    }
+
+    return res.status(201).json({
+      success: true,
+      data: { url: saved.url },
+    });
+  } catch (error) {
+    return next(error);
   }
-
-  const folder = req.params.folder;
-  const url = `/uploads/${folder}/${req.file.filename}`;
-
-  res.status(201).json({
-    success: true,
-    data: { url },
-  });
 }
 
 module.exports = {
