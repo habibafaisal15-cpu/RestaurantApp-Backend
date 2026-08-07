@@ -36,7 +36,7 @@ router.post('/media/:folder', (req, res, next) => {
   try {
     uploadMediaImage(req.params.folder)(req, res, (err) => {
       if (err) return next(err);
-      return catalogController.uploadMedia(req, res);
+      return catalogController.uploadMedia(req, res, next);
     });
   } catch (error) {
     next(error);

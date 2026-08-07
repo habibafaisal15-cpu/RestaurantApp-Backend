@@ -139,9 +139,16 @@ async function uploadMedia(req, res, next) {
       // Disk is optional on ephemeral hosts; DB is the source of truth.
     }
 
+    const host = req.get('x-forwarded-host') || req.get('host');
+    const proto = req.get('x-forwarded-proto') || req.protocol || 'https';
+    const absoluteUrl =
+      host != null
+        ? `${proto}://${host}${saved.url}`
+        : saved.url;
+
     return res.status(201).json({
       success: true,
-      data: { url: saved.url },
+      data: { url: absoluteUrl, path: saved.url },
     });
   } catch (error) {
     return next(error);
