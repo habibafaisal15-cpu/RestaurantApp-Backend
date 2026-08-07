@@ -23,10 +23,14 @@ function errorHandler(err, _req, res, _next) {
   }
 
   if (err instanceof ZodError) {
+    const first = err.errors?.[0];
+    const detail = first
+      ? `${first.path?.join('.') || 'field'}: ${first.message}`
+      : 'Invalid request data';
     return res.status(400).json({
       success: false,
       code: 'VALIDATION_ERROR',
-      message: 'Invalid request data',
+      message: detail,
       errors: err.errors.map((e) => ({
         path: e.path.join('.'),
         message: e.message,

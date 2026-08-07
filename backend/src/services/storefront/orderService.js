@@ -54,7 +54,9 @@ async function createOrder(payload) {
   const zone = await findZoneById(payload.zone_id);
 
   return db.transaction(async (trx) => {
-    const productIds = payload.items.map((i) => i.product_id);
+    const productIds = [
+      ...new Set(payload.items.map((i) => i.product_id).filter(Boolean)),
+    ];
     const products = await trx('products')
       .whereIn('id', productIds)
       .where({ is_active: true, available_for_delivery: true });
@@ -67,7 +69,10 @@ async function createOrder(payload) {
 
     for (const item of payload.items) {
       const product = productMap[item.product_id];
-      if (!product.in_stock) {
+      if (!product) {
+        throw new BadRequestError('One or more products are invalid or unavailable');
+      }
+      if (product.in_stock === false) {
         throw new BadRequestError(`${product.name} is out of stock`);
       }
     }
@@ -75,20 +80,32 @@ async function createOrder(payload) {
     let subtotal = 0;
     const marketingPrices = await buildMarketingPriceMap();
     const catalogDeals = await catalogService.listDeals({ active_only: true });
-    const lineItems = payload.items.map((item) => {
+    const lineItems = [];
+
+    for (const item of payload.items) {
       const product = productMap[item.product_id];
-      const unitPrice = resolveUnitPrice(product, marketingPrices, catalogDeals);
-      const totalPrice = unitPrice * item.quantity;
+      const unitPrice = await resolveUnitPrice(
+        product,
+        marketingPrices,
+        catalogDeals,
+      );
+      const quantity = Number(item.quantity) || 0;
+      const totalPrice = Number(unitPrice) * quantity;
+
+      if (!Number.isFinite(totalPrice) || totalPrice < 0) {
+        throw new BadRequestError(`Invalid price for ${product.name}`);
+      }
+
       subtotal += totalPrice;
-      return {
+      lineItems.push({
         id: generateId(),
         product_id: product.id,
         product_name: product.name,
-        quantity: item.quantity,
+        quantity,
         unit_price: unitPrice,
         total_price: totalPrice,
-      };
-    });
+      });
+    }
 
     const deliveryFee = Number(zone.base_fee);
     const discount = Number(payload.discount || 0);
