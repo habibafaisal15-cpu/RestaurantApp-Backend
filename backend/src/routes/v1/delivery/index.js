@@ -24,6 +24,8 @@ const {
   validateBody: validateAdminBody,
   createRiderSchema,
   updateRiderSchema,
+  createDeliveryLocationSchema,
+  updateDeliveryLocationSchema,
 } = require('../../../validators/adminSchemas');
 
 const router = express.Router();
@@ -107,5 +109,20 @@ router.get('/riders/:id', adminController.getRider);
 router.post('/riders', validateAdminBody(createRiderSchema), adminController.createRider);
 router.patch('/riders/:id', validateAdminBody(updateRiderSchema), adminController.updateRider);
 router.patch('/riders/:id/toggle-active', adminController.toggleRider);
+
+router.get('/locations', adminController.listDeliveryLocations);
+router.get('/locations/:id', adminController.getDeliveryLocation);
+router.post(
+  '/locations',
+  validateAdminBody(createDeliveryLocationSchema),
+  adminController.createDeliveryLocation,
+);
+router.patch(
+  '/locations/:id',
+  validateAdminBody(updateDeliveryLocationSchema),
+  adminController.updateDeliveryLocation,
+);
+router.patch('/locations/:id/toggle-active', adminController.toggleDeliveryLocation);
+router.delete('/locations/:id', adminController.deleteDeliveryLocation);
 
 module.exports = router;

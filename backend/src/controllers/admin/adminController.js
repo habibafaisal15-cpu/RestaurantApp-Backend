@@ -5,6 +5,7 @@ const salesService = require('../../services/admin/salesService');
 const riderService = require('../../services/admin/riderService');
 const posOrderService = require('../../services/admin/posOrderService');
 const marketingDealService = require('../../services/admin/marketingDealService');
+const deliveryLocationService = require('../../services/admin/deliveryLocationService');
 const { createMenuEmit, MENU_WS_EVENTS } = require('../../utils/menuEvents');
 
 function emitMarketingDealChange(req, action, deal) {
@@ -123,6 +124,36 @@ async function toggleRider(req, res) {
   res.json({ success: true, data });
 }
 
+async function listDeliveryLocations(req, res) {
+  const data = await deliveryLocationService.listLocations(req.query);
+  res.json({ success: true, data });
+}
+
+async function getDeliveryLocation(req, res) {
+  const data = await deliveryLocationService.getLocationById(req.params.id);
+  res.json({ success: true, data });
+}
+
+async function createDeliveryLocation(req, res) {
+  const data = await deliveryLocationService.createLocation(req.body);
+  res.status(201).json({ success: true, data });
+}
+
+async function updateDeliveryLocation(req, res) {
+  const data = await deliveryLocationService.updateLocation(req.params.id, req.body);
+  res.json({ success: true, data });
+}
+
+async function toggleDeliveryLocation(req, res) {
+  const data = await deliveryLocationService.toggleLocationActive(req.params.id);
+  res.json({ success: true, data });
+}
+
+async function deleteDeliveryLocation(req, res) {
+  const data = await deliveryLocationService.deleteLocation(req.params.id);
+  res.json({ success: true, data });
+}
+
 async function createWalkInOrder(req, res) {
   const data = await posOrderService.createWalkInOrder(req.body);
 
@@ -187,6 +218,12 @@ module.exports = {
   createRider,
   updateRider,
   toggleRider,
+  listDeliveryLocations,
+  getDeliveryLocation,
+  createDeliveryLocation,
+  updateDeliveryLocation,
+  toggleDeliveryLocation,
+  deleteDeliveryLocation,
   createWalkInOrder,
   updateHeroSlides,
   listMarketingDeals,

@@ -72,6 +72,34 @@ const updateRiderSchema = z
     message: 'Provide at least one field to update',
   });
 
+const createDeliveryLocationSchema = z.object({
+  name: z.string().min(1).max(100),
+  address: z.string().min(1).max(255),
+  latitude: z.coerce.number().min(-90).max(90),
+  longitude: z.coerce.number().min(-180).max(180),
+  radius_km: z.coerce.number().min(0.5).max(50).default(10),
+  is_active: boolish.optional().default(true),
+  notes: z.string().max(500).optional().default(''),
+  base_fee: z.coerce.number().min(0).optional(),
+  estimated_time: z.string().max(50).optional(),
+});
+
+const updateDeliveryLocationSchema = z
+  .object({
+    name: z.string().min(1).max(100).optional(),
+    address: z.string().min(1).max(255).optional(),
+    latitude: z.coerce.number().min(-90).max(90).optional(),
+    longitude: z.coerce.number().min(-180).max(180).optional(),
+    radius_km: z.coerce.number().min(0.5).max(50).optional(),
+    is_active: boolish.optional(),
+    notes: z.string().max(500).optional(),
+    base_fee: z.coerce.number().min(0).optional(),
+    estimated_time: z.string().max(50).optional(),
+  })
+  .refine((data) => Object.keys(data).length > 0, {
+    message: 'Provide at least one field to update',
+  });
+
 const walkInItemSchema = z.object({
   menuItemId: z.string().uuid(),
   quantity: z.coerce.number().int().positive(),
@@ -111,6 +139,8 @@ module.exports = {
   generateSlipSchema,
   createRiderSchema,
   updateRiderSchema,
+  createDeliveryLocationSchema,
+  updateDeliveryLocationSchema,
   walkInOrderSchema,
   validateBody,
 };

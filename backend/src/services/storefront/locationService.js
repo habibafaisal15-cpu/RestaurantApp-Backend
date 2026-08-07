@@ -6,6 +6,9 @@ const catalogService = require('../delivery/catalogService');
 const marketingDealService = require('../admin/marketingDealService');
 const popularityService = require('./popularityService');
 const googleMapsService = require('./googleMapsService');
+const { IN_STORE_ZONE_ID } = require('../../config/zones');
+
+const UNSERVICEABLE_MESSAGE = "Sorry, we don't deliver here.";
 
 function mapMarketingDealForStorefront(deal) {
   const price = Number(deal.price) || 0;
@@ -31,7 +34,9 @@ function mapMarketingDealForStorefront(deal) {
 }
 
 async function findActiveZones() {
-  return db('delivery_zones').where({ is_active: true });
+  return db('delivery_zones')
+    .where({ is_active: true })
+    .whereNot('id', IN_STORE_ZONE_ID);
 }
 
 async function findZoneById(id) {
@@ -60,7 +65,7 @@ async function checkLocationServiceability(location) {
   if (!matched) {
     return {
       serviceable: false,
-      message: 'Not deliverable to this location',
+      message: UNSERVICEABLE_MESSAGE,
       location: {
         latitude: location.latitude ?? null,
         longitude: location.longitude ?? null,

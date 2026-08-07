@@ -40,9 +40,11 @@ function locationMatchesZone(location, serviceArea) {
   const lat = location.latitude ?? location.lat;
   const lng = location.longitude ?? location.lng;
 
+  // Hub zones (admin Delivery Locations): when GPS is present, only radius/bounds/polygon count.
   if (lat != null && lng != null) {
-    if (area.center && area.radius_km && pointInCircle(lat, lng, area.center, area.radius_km)) {
-      return true;
+    const hasHubRadius = Boolean(area.center && area.radius_km);
+    if (hasHubRadius) {
+      return pointInCircle(lat, lng, area.center, area.radius_km);
     }
     if (area.bounds && pointInBounds(lat, lng, area.bounds)) {
       return true;
