@@ -83,6 +83,57 @@ async function reverseGeocode(latitude, longitude) {
   }
 }
 
+async function fetchJson(url, options = {}, timeoutMs = 8000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+      headers: {
+        Accept: 'application/json',
+        ...(options.headers || {}),
+      },
+    });
+    if (!response.ok) {
+      throw new BadRequestError(`Lookup failed (${response.status})`);
+    }
+    return response.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function photonGeocode(address) {
+  const url = `https://photon.komoot.io/api/?limit=1&q=${encodeURIComponent(address)}`;
+  const data = await fetchJson(url, {
+    headers: { 'User-Agent': 'RestaurantApp-DeliveryLocations/1.0' },
+  });
+
+  const feature = data?.features?.[0];
+  if (!feature?.geometry?.coordinates) {
+    throw new BadRequestError('Address not found');
+  }
+
+  const [lng, lat] = feature.geometry.coordinates;
+  const props = feature.properties || {};
+  const parts = [props.name, props.street, props.city, props.state, props.country].filter(Boolean);
+
+  return {
+    formatted_address: parts.join(', ') || address,
+    place_id: props.osm_id ? String(props.osm_id) : null,
+    latitude: Number(lat),
+    longitude: Number(lng),
+    pincode: props.postcode || null,
+    area: props.district || props.suburb || null,
+    city: props.city || props.town || props.village || null,
+    state: props.state || null,
+    country: props.country || null,
+    source: 'photon',
+  };
+}
+
 async function geocodeAddress(address) {
   const query = String(address || '').trim();
   if (!query) {
@@ -100,27 +151,25 @@ async function geocodeAddress(address) {
         };
       }
     } catch {
-      // Fall through to OpenStreetMap
+      // Fall through to free providers
     }
   }
 
-  return nominatimGeocode(query);
+  try {
+    return await photonGeocode(query);
+  } catch {
+    return nominatimGeocode(query);
+  }
 }
 
 async function nominatimGeocode(address) {
   const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(address)}`;
-  const response = await fetch(url, {
+  const results = await fetchJson(url, {
     headers: {
-      'User-Agent': 'RestaurantApp-DeliveryLocations/1.0',
-      Accept: 'application/json',
+      'User-Agent': 'RestaurantApp-DeliveryLocations/1.0 (contact: support@restaurant.local)',
     },
   });
 
-  if (!response.ok) {
-    throw new BadRequestError('Address lookup failed');
-  }
-
-  const results = await response.json();
   if (!Array.isArray(results) || !results.length) {
     throw new BadRequestError('Address not found');
   }
@@ -143,14 +192,11 @@ async function nominatimGeocode(address) {
 async function nominatimReverse(latitude, longitude) {
   try {
     const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`;
-    const response = await fetch(url, {
+    const result = await fetchJson(url, {
       headers: {
-        'User-Agent': 'RestaurantApp-DeliveryLocations/1.0',
-        Accept: 'application/json',
+        'User-Agent': 'RestaurantApp-DeliveryLocations/1.0 (contact: support@restaurant.local)',
       },
     });
-    if (!response.ok) return fallbackFromCoordinates(latitude, longitude);
-    const result = await response.json();
     if (!result?.display_name) return fallbackFromCoordinates(latitude, longitude);
 
     return {
