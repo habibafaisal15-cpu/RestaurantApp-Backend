@@ -1,5 +1,5 @@
 const { v4: uuidv4 } = require('uuid');
-const db = require('../../config/database');
+const db = require('../config/database');
 
 const ALLOWED_FOLDERS = new Set(['products', 'deals', 'categories', 'hero']);
 
