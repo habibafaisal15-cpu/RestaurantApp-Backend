@@ -9,13 +9,26 @@ const { UPLOAD_ROOT, ensureUploadDirs } = require('./config/upload');
 const mediaService = require('./services/mediaService');
 const { createNoopIo } = require('./utils/noopIo');
 
+function isAllowedCorsOrigin(origin) {
+  if (!origin) return true;
+  if (!corsOrigin || corsOrigin === '*') return true;
+
+  const allowed = corsOrigin.split(',').map((entry) => entry.trim()).filter(Boolean);
+  if (allowed.includes(origin)) return true;
+  if (/^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(origin)) return true;
+  if (/^http:\/\/localhost:\d+$/.test(origin)) return true;
+  return false;
+}
+
 ensureUploadDirs();
 
 const app = express();
 app.set('io', createNoopIo());
 
 app.use(cors({
-  origin: corsOrigin === '*' ? true : corsOrigin.split(',').map((o) => o.trim()),
+  origin(origin, callback) {
+    callback(null, isAllowedCorsOrigin(origin));
+  },
 }));
 app.use(express.json({ limit: '2mb' }));
 
