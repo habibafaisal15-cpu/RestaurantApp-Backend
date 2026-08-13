@@ -48,17 +48,25 @@ function formatDeal(deal) {
   };
 }
 
+function coerceBool(value) {
+  if (value === true || value === 'true' || value === '1') return true;
+  if (value === false || value === 'false' || value === '0') return false;
+  return null;
+}
+
 function applyFilters(deals, filters = {}) {
   let list = [...deals];
 
-  if (filters.active != null) {
-    list = list.filter((d) => d.active === filters.active);
+  const activeFilter = coerceBool(filters.active);
+  if (activeFilter !== null) {
+    list = list.filter((d) => (d.active !== false) === activeFilter);
   }
-  if (filters.showOnCustomer != null) {
-    list = list.filter((d) => d.showOnCustomer === filters.showOnCustomer);
+  const showFilter = coerceBool(filters.showOnCustomer);
+  if (showFilter !== null) {
+    list = list.filter((d) => (d.showOnCustomer !== false) === showFilter);
   }
   if (filters.search) {
-    const q = filters.search.toLowerCase();
+    const q = String(filters.search).toLowerCase();
     list = list.filter(
       (d) =>
         d.title.toLowerCase().includes(q) ||
@@ -141,24 +149,26 @@ async function ensureDealsCategory() {
 }
 
 async function updateProductForDeal(deal) {
-  if (!deal.productId) return null;
+  const productId = deal.productId || deal.product_id || null;
+  if (!productId) return null;
 
-  const existing = await db('products').where({ id: deal.productId }).first();
+  const existing = await db('products').where({ id: productId }).first();
   if (!existing) return null;
 
   await db('products')
-    .where({ id: deal.productId })
+    .where({ id: productId })
     .update({
       name: deal.title.trim().slice(0, 100),
       description: deal.description || '',
       price: Number(deal.price) || 0,
       image_url: normalizeImageUrl(deal.image),
-      is_active: deal.active !== false && deal.showOnCustomer !== false,
-      available_for_delivery: true,
+      // POS sells any active deal; storefront delivery still respects showOnCustomer.
+      is_active: deal.active !== false,
+      available_for_delivery: deal.active !== false && deal.showOnCustomer !== false,
       in_stock: true,
     });
 
-  return deal.productId;
+  return productId;
 }
 
 async function syncProductForDeal(deal) {
@@ -189,9 +199,9 @@ async function syncProductForDeal(deal) {
     description: deal.description || '',
     price: Number(deal.price) || 0,
     image_url: normalizeImageUrl(deal.image),
-    available_for_delivery: true,
+    available_for_delivery: deal.active !== false && deal.showOnCustomer !== false,
     in_stock: true,
-    is_active: deal.active !== false && deal.showOnCustomer !== false,
+    is_active: deal.active !== false,
   });
 
   return productId;
@@ -211,8 +221,32 @@ async function persistDealProductId(dealId, productId, stored) {
 }
 async function listDeals(filters = {}, options = {}) {
   const { stored } = await readContent();
-  const deals = stored.marketingDeals || [];
-  // Storefront must stay read-only — product sync happens on admin create/update.
+  let deals = [...(stored.marketingDeals || [])];
+
+  // Ensure every deal has a sellable product for POS (admin reads only).
+  if (!options.forStorefront) {
+    let dirty = false;
+    for (let i = 0; i < deals.length; i += 1) {
+      const deal = deals[i];
+      if (deal.active === false) continue;
+      try {
+        const productId = await syncProductForDeal({
+          ...deal,
+          productId: deal.productId || deal.product_id || null,
+        });
+        if (productId && deal.productId !== productId) {
+          deals[i] = { ...deal, productId };
+          dirty = true;
+        }
+      } catch (err) {
+        console.error('Failed to sync deal product:', err.message);
+      }
+    }
+    if (dirty) {
+      await writeContent({ ...stored, marketingDeals: deals });
+    }
+  }
+
   return applyFilters(deals, filters).map(formatDeal);
 }
 
