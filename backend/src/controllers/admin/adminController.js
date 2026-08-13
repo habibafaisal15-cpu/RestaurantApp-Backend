@@ -6,6 +6,7 @@ const riderService = require('../../services/admin/riderService');
 const posOrderService = require('../../services/admin/posOrderService');
 const marketingDealService = require('../../services/admin/marketingDealService');
 const deliveryLocationService = require('../../services/admin/deliveryLocationService');
+const staffService = require('../../services/admin/staffService');
 const popularityService = require('../../services/storefront/popularityService');
 const { createMenuEmit, MENU_WS_EVENTS } = require('../../utils/menuEvents');
 
@@ -205,6 +206,31 @@ async function removeMarketingDeal(req, res) {
   res.json({ success: true, data });
 }
 
+async function listStaff(req, res) {
+  const data = await staffService.listStaff(req.query);
+  res.json({ success: true, data });
+}
+
+async function getStaff(req, res) {
+  const data = await staffService.getStaffById(req.params.id);
+  res.json({ success: true, data });
+}
+
+async function createStaff(req, res) {
+  const data = await staffService.createStaff(req.body);
+  res.status(201).json({ success: true, data });
+}
+
+async function updateStaff(req, res) {
+  const data = await staffService.updateStaff(req.params.id, req.body, req.admin?.id);
+  res.json({ success: true, data });
+}
+
+async function toggleStaff(req, res) {
+  const data = await staffService.toggleStaffActive(req.params.id, req.admin?.id);
+  res.json({ success: true, data });
+}
+
 module.exports = {
   getSettings,
   updateSettings,
@@ -238,4 +264,9 @@ module.exports = {
   createMarketingDeal,
   updateMarketingDeal,
   removeMarketingDeal,
+  listStaff,
+  getStaff,
+  createStaff,
+  updateStaff,
+  toggleStaff,
 };

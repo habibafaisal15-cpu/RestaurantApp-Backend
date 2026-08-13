@@ -23,6 +23,11 @@ const updateSettingsSchema = z
     slipFooter: z.string().max(500).optional(),
     autoSlipWalkIn: boolish.optional(),
     autoSlipOnlineAccept: boolish.optional(),
+    billWidth: z.enum(['short', 'wide']).optional(),
+    showNameOnBill: boolish.optional(),
+    showLogoOnBill: boolish.optional(),
+    showAddressOnBill: boolish.optional(),
+    showPhoneOnBill: boolish.optional(),
     openingHours: z.record(z.any()).optional(),
   })
   .refine((data) => Object.keys(data).length > 0, {
@@ -123,6 +128,36 @@ const walkInOrderSchema = z.object({
   notes: z.string().optional(),
 });
 
+const staffRoleSchema = z.enum(['admin', 'super-admin', 'manager', 'cashier', 'store-admin']);
+
+const createStaffSchema = z.object({
+  full_name: z.string().min(1).max(100).optional(),
+  name: z.string().min(1).max(100).optional(),
+  email: z.string().email().max(150),
+  phone: z.string().max(30).optional().nullable(),
+  role: staffRoleSchema.optional().default('admin'),
+  password: z.string().min(6).max(100),
+  active: boolish.optional(),
+  is_active: boolish.optional(),
+}).refine((data) => Boolean(data.full_name || data.name), {
+  message: 'Name is required',
+});
+
+const updateStaffSchema = z
+  .object({
+    full_name: z.string().min(1).max(100).optional(),
+    name: z.string().min(1).max(100).optional(),
+    email: z.string().email().max(150).optional(),
+    phone: z.string().max(30).optional().nullable(),
+    role: staffRoleSchema.optional(),
+    password: z.string().min(6).max(100).optional(),
+    active: boolish.optional(),
+    is_active: boolish.optional(),
+  })
+  .refine((data) => Object.keys(data).length > 0, {
+    message: 'Provide at least one field to update',
+  });
+
 function validateBody(schema) {
   return (req, _res, next) => {
     req.body = schema.parse(req.body);
@@ -142,5 +177,7 @@ module.exports = {
   createDeliveryLocationSchema,
   updateDeliveryLocationSchema,
   walkInOrderSchema,
+  createStaffSchema,
+  updateStaffSchema,
   validateBody,
 };
