@@ -5,12 +5,70 @@ const { generateId } = require('../../utils/helpers');
 const MOVEMENT_TYPES = ['in', 'out', 'adjust', 'sale', 'return'];
 
 let inventoryColumnsReady = null;
+let schemaEnsurePromise = null;
 
 async function hasInventoryColumns() {
   if (inventoryColumnsReady == null) {
     inventoryColumnsReady = await db.schema.hasColumn('products', 'stock_qty');
   }
   return inventoryColumnsReady;
+}
+
+async function ensureInventorySchema() {
+  if (schemaEnsurePromise) return schemaEnsurePromise;
+
+  schemaEnsurePromise = (async () => {
+    const hasStockQty = await db.schema.hasColumn('products', 'stock_qty');
+    if (!hasStockQty) {
+      await db.schema.alterTable('products', (table) => {
+        table.integer('stock_qty').notNullable().defaultTo(0);
+        table.integer('low_stock_threshold').notNullable().defaultTo(5);
+        table.boolean('track_stock').notNullable().defaultTo(false);
+      });
+    } else {
+      if (!(await db.schema.hasColumn('products', 'low_stock_threshold'))) {
+        await db.schema.alterTable('products', (table) => {
+          table.integer('low_stock_threshold').notNullable().defaultTo(5);
+        });
+      }
+      if (!(await db.schema.hasColumn('products', 'track_stock'))) {
+        await db.schema.alterTable('products', (table) => {
+          table.boolean('track_stock').notNullable().defaultTo(false);
+        });
+      }
+    }
+
+    const hasMovements = await db.schema.hasTable('stock_movements');
+    if (!hasMovements) {
+      await db.schema.createTable('stock_movements', (table) => {
+        table.string('id', 36).primary();
+        table
+          .string('product_id', 36)
+          .notNullable()
+          .references('id')
+          .inTable('products')
+          .onDelete('CASCADE');
+        table.string('type', 20).notNullable();
+        table.integer('quantity').notNullable();
+        table.integer('quantity_before').notNullable().defaultTo(0);
+        table.integer('quantity_after').notNullable().defaultTo(0);
+        table.string('reason', 255).nullable();
+        table.string('reference_type', 40).nullable();
+        table.string('reference_id', 36).nullable();
+        table.string('created_by', 36).nullable();
+        table.timestamp('created_at').defaultTo(db.fn.now());
+        table.index(['product_id', 'created_at']);
+      });
+    }
+
+    inventoryColumnsReady = true;
+  })().catch((err) => {
+    schemaEnsurePromise = null;
+    console.error('Failed to ensure inventory schema:', err.message);
+    throw err;
+  });
+
+  return schemaEnsurePromise;
 }
 
 function stockStatus(row) {
@@ -67,36 +125,47 @@ function formatMovement(row) {
 }
 
 async function listInventory(filters = {}) {
-  if (!(await hasInventoryColumns())) {
-    return [];
+  try {
+    await ensureInventorySchema();
+  } catch {
+    // Still list products even if stock columns cannot be created yet.
+  }
+
+  const stockReady = await hasInventoryColumns();
+  const selectCols = [
+    'products.id',
+    'products.name',
+    'products.category_id',
+    'products.image_url',
+    'products.price',
+    'products.is_active',
+    'products.in_stock',
+    'products.updated_at',
+    'menu_categories.category_name',
+  ];
+  if (stockReady) {
+    selectCols.push(
+      'products.stock_qty',
+      'products.low_stock_threshold',
+      'products.track_stock',
+    );
   }
 
   let query = db('products')
     .leftJoin('menu_categories', 'products.category_id', 'menu_categories.id')
-    .select(
-      'products.id',
-      'products.name',
-      'products.category_id',
-      'products.image_url',
-      'products.price',
-      'products.is_active',
-      'products.in_stock',
-      'products.stock_qty',
-      'products.low_stock_threshold',
-      'products.track_stock',
-      'products.updated_at',
-      'menu_categories.category_name',
-    )
+    .select(selectCols)
     .orderBy('products.name', 'asc');
 
   if (filters.category_id || filters.categoryId) {
     query = query.where('products.category_id', filters.category_id || filters.categoryId);
   }
 
-  if (filters.track_stock === true || filters.track_stock === 'true') {
-    query = query.where('products.track_stock', true);
-  } else if (filters.track_stock === false || filters.track_stock === 'false') {
-    query = query.where('products.track_stock', false);
+  if (stockReady) {
+    if (filters.track_stock === true || filters.track_stock === 'true') {
+      query = query.where('products.track_stock', true);
+    } else if (filters.track_stock === false || filters.track_stock === 'false') {
+      query = query.where('products.track_stock', false);
+    }
   }
 
   if (filters.active === true || filters.active === 'true') {
@@ -129,7 +198,7 @@ async function listInventory(filters = {}) {
 }
 
 async function getInventorySummary() {
-  const items = await listInventory({ active: true });
+  const items = await listInventory();
   const tracked = items.filter((item) => item.trackStock);
   return {
     totalItems: items.length,
@@ -142,8 +211,10 @@ async function getInventorySummary() {
 }
 
 async function getInventoryItem(id) {
-  if (!(await hasInventoryColumns())) {
-    throw new NotFoundError('Inventory not available yet');
+  try {
+    await ensureInventorySchema();
+  } catch {
+    // continue with whatever columns exist
   }
 
   const row = await db('products')
@@ -187,6 +258,7 @@ async function writeMovement(trx, payload) {
 }
 
 async function updateInventorySettings(id, payload) {
+  await ensureInventorySchema();
   if (!(await hasInventoryColumns())) {
     throw new BadRequestError('Inventory columns are not migrated yet');
   }
@@ -229,6 +301,7 @@ async function updateInventorySettings(id, payload) {
 }
 
 async function adjustStock(id, payload, actorId = null) {
+  await ensureInventorySchema();
   if (!(await hasInventoryColumns())) {
     throw new BadRequestError('Inventory columns are not migrated yet');
   }
@@ -298,6 +371,11 @@ async function adjustStock(id, payload, actorId = null) {
 }
 
 async function listMovements(filters = {}) {
+  try {
+    await ensureInventorySchema();
+  } catch {
+    return [];
+  }
   const hasTable = await db.schema.hasTable('stock_movements');
   if (!hasTable) return [];
 
@@ -327,6 +405,11 @@ async function listMovements(filters = {}) {
  * Safe no-op if inventory columns are missing.
  */
 async function deductForSale(lineItems = [], meta = {}) {
+  try {
+    await ensureInventorySchema();
+  } catch {
+    return [];
+  }
   if (!(await hasInventoryColumns())) return [];
 
   const results = [];
@@ -379,4 +462,5 @@ module.exports = {
   deductForSale,
   stockStatus,
   hasInventoryColumns,
+  ensureInventorySchema,
 };

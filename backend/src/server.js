@@ -34,6 +34,11 @@ process.on('unhandledRejection', (reason) => {
 server.listen(port, () => {
   console.log(`Server running on http://localhost:${port}`);
   console.log(`API: http://localhost:${port}/api/v1/health`);
+
+  const inventoryService = require('./services/admin/inventoryService');
+  inventoryService.ensureInventorySchema().catch((err) => {
+    console.error('Inventory schema setup failed:', err.message);
+  });
 });
 
 server.on('error', (err) => {
