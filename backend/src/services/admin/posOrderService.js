@@ -7,6 +7,7 @@ const {
 } = require('../../utils/helpers');
 const settingsService = require('./settingsService');
 const slipService = require('./slipService');
+const inventoryService = require('./inventoryService');
 const { IN_STORE_ZONE_ID } = require('../../config/zones');
 
 async function getNextOrderNumber(trx) {
@@ -201,6 +202,16 @@ async function createWalkInOrder(payload) {
     return { order, items, autoSlip: settings.autoSlipWalkIn, orderId };
   }).then(async ({ order, items, autoSlip, orderId }) => {
     const formatted = formatWalkInOrder(order, items);
+
+    try {
+      await inventoryService.deductForSale(items, {
+        reason: 'POS walk-in order',
+        referenceType: 'order',
+        referenceId: orderId,
+      });
+    } catch (error) {
+      console.error('POS inventory deduct failed:', error.message);
+    }
 
     if (autoSlip) {
       try {

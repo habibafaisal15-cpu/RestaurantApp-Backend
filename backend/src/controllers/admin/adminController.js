@@ -7,6 +7,7 @@ const posOrderService = require('../../services/admin/posOrderService');
 const marketingDealService = require('../../services/admin/marketingDealService');
 const deliveryLocationService = require('../../services/admin/deliveryLocationService');
 const staffService = require('../../services/admin/staffService');
+const inventoryService = require('../../services/admin/inventoryService');
 const popularityService = require('../../services/storefront/popularityService');
 const { createMenuEmit, MENU_WS_EVENTS } = require('../../utils/menuEvents');
 
@@ -231,6 +232,36 @@ async function toggleStaff(req, res) {
   res.json({ success: true, data });
 }
 
+async function listInventory(req, res) {
+  const data = await inventoryService.listInventory(req.query);
+  res.json({ success: true, data });
+}
+
+async function getInventorySummary(req, res) {
+  const data = await inventoryService.getInventorySummary();
+  res.json({ success: true, data });
+}
+
+async function getInventoryItem(req, res) {
+  const data = await inventoryService.getInventoryItem(req.params.id);
+  res.json({ success: true, data });
+}
+
+async function updateInventoryItem(req, res) {
+  const data = await inventoryService.updateInventorySettings(req.params.id, req.body);
+  res.json({ success: true, data });
+}
+
+async function adjustInventoryStock(req, res) {
+  const data = await inventoryService.adjustStock(req.params.id, req.body, req.admin?.id);
+  res.json({ success: true, data });
+}
+
+async function listStockMovements(req, res) {
+  const data = await inventoryService.listMovements(req.query);
+  res.json({ success: true, data });
+}
+
 module.exports = {
   getSettings,
   updateSettings,
@@ -269,4 +300,10 @@ module.exports = {
   createStaff,
   updateStaff,
   toggleStaff,
+  listInventory,
+  getInventorySummary,
+  getInventoryItem,
+  updateInventoryItem,
+  adjustInventoryStock,
+  listStockMovements,
 };

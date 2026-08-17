@@ -25,6 +25,9 @@ function formatProduct(row, categoryName) {
     available_for_delivery: availableForDelivery,
     is_active: isActive,
     availability_status,
+    stock_qty: row.stock_qty != null ? Number(row.stock_qty) : undefined,
+    low_stock_threshold: row.low_stock_threshold != null ? Number(row.low_stock_threshold) : undefined,
+    track_stock: row.track_stock != null ? Boolean(row.track_stock) : undefined,
   };
 }
 

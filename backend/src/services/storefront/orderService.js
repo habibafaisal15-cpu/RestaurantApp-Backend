@@ -8,6 +8,7 @@ const {
 const { findBestDealForProduct } = require('../../utils/menuBuilder');
 const catalogService = require('../delivery/catalogService');
 const marketingDealService = require('../admin/marketingDealService');
+const inventoryService = require('../admin/inventoryService');
 const { findZoneById } = require('./locationService');
 
 async function buildMarketingPriceMap() {
@@ -52,8 +53,9 @@ async function getNextOrderNumber(trx) {
 
 async function createOrder(payload) {
   const zone = await findZoneById(payload.zone_id);
+  let savedLineItems = [];
 
-  return db.transaction(async (trx) => {
+  const result = await db.transaction(async (trx) => {
     const productIds = [
       ...new Set(payload.items.map((i) => i.product_id).filter(Boolean)),
     ];
@@ -74,6 +76,12 @@ async function createOrder(payload) {
       }
       if (product.in_stock === false) {
         throw new BadRequestError(`${product.name} is out of stock`);
+      }
+      if (
+        product.track_stock &&
+        Number(product.stock_qty || 0) < Number(item.quantity || 0)
+      ) {
+        throw new BadRequestError(`Insufficient stock for ${product.name}`);
       }
     }
 
@@ -155,6 +163,8 @@ async function createOrder(payload) {
       note: 'Order placed by customer',
     });
 
+    savedLineItems = lineItems;
+
     return {
       id: orderId,
       order_number: orderNumber,
@@ -169,6 +179,18 @@ async function createOrder(payload) {
       estimated_delivery_time: estimatedDeliveryTime,
     };
   });
+
+  try {
+    await inventoryService.deductForSale(savedLineItems, {
+      reason: 'Online order',
+      referenceType: 'order',
+      referenceId: result.id,
+    });
+  } catch (err) {
+    console.error('Failed to deduct inventory for online order:', err.message);
+  }
+
+  return result;
 }
 
 module.exports = { createOrder };

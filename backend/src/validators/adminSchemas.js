@@ -158,6 +158,27 @@ const updateStaffSchema = z
     message: 'Provide at least one field to update',
   });
 
+const adjustStockSchema = z.object({
+  type: z.enum(['in', 'out', 'adjust', 'sale', 'return']).default('adjust'),
+  quantity: z.coerce.number(),
+  reason: z.string().max(255).optional().nullable(),
+  trackStock: boolish.optional(),
+  enableTracking: boolish.optional(),
+  referenceType: z.string().max(40).optional().nullable(),
+  referenceId: z.string().max(36).optional().nullable(),
+});
+
+const updateInventorySettingsSchema = z
+  .object({
+    trackStock: boolish.optional(),
+    track_stock: boolish.optional(),
+    lowStockThreshold: z.coerce.number().min(0).optional(),
+    low_stock_threshold: z.coerce.number().min(0).optional(),
+  })
+  .refine((data) => Object.keys(data).length > 0, {
+    message: 'Provide at least one field to update',
+  });
+
 function validateBody(schema) {
   return (req, _res, next) => {
     req.body = schema.parse(req.body);
@@ -179,5 +200,7 @@ module.exports = {
   walkInOrderSchema,
   createStaffSchema,
   updateStaffSchema,
+  adjustStockSchema,
+  updateInventorySettingsSchema,
   validateBody,
 };
