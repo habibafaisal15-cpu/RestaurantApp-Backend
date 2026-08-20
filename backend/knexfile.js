@@ -28,8 +28,12 @@ const pgConfig = {
   client: 'pg',
   connection: buildPgConnection(),
   pool: {
-    min: 2,
+    min: 0,
     max: 10,
+    // Fail fast instead of hanging login/API when DB is saturated.
+    acquireTimeoutMillis: 10000,
+    createTimeoutMillis: 10000,
+    idleTimeoutMillis: 30000,
   },
   migrations: {
     directory: './database/migrations',

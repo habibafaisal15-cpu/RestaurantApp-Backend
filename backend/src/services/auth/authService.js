@@ -38,7 +38,12 @@ async function login(email, password, portal = 'admin') {
     throw new UnauthorizedError('Invalid email or password');
   }
 
-  const valid = await bcrypt.compare(password, admin.password_hash);
+  const hash = String(admin.password_hash || '');
+  if (!/^\$2[aby]?\$\d{2}\$/.test(hash)) {
+    throw new UnauthorizedError('Invalid email or password');
+  }
+
+  const valid = await bcrypt.compare(password, hash);
   if (!valid) {
     throw new UnauthorizedError('Invalid email or password');
   }
