@@ -43,6 +43,10 @@ server.listen(port, () => {
   salesService.ensureReportExtrasSchema().catch((err) => {
     console.error('Reports schema setup failed:', err.message);
   });
+  const opsAccountsService = require('./services/admin/opsAccountsService');
+  opsAccountsService.ensureOpsStaffAccounts().catch((err) => {
+    console.error('Ops staff accounts setup failed:', err.message);
+  });
 });
 
 server.on('error', (err) => {

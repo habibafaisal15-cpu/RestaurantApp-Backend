@@ -35,25 +35,37 @@ async function syncRiderProfile(staff) {
   const phone = String(staff.phone || '').trim();
   if (!phone) return;
 
-  const existing = await db('delivery_riders').where({ phone_number: phone }).first();
-  if (existing) {
-    await db('delivery_riders').where({ id: existing.id }).update({
-      full_name: staff.name || staff.full_name,
-      is_active: staff.active !== false,
-      status: staff.active === false ? 'Offline' : existing.status || 'Available',
+  try {
+    const digits = phone.replace(/\D/g, '');
+    const riders = await db('delivery_riders').select('*');
+    const existing = riders.find((row) => {
+      const rowPhone = String(row.phone_number || '').trim();
+      const rowDigits = rowPhone.replace(/\D/g, '');
+      return rowPhone === phone || (digits && rowDigits && rowDigits.endsWith(digits.slice(-10)));
     });
-    return;
-  }
 
-  await db('delivery_riders').insert({
-    id: generateId(),
-    full_name: staff.name || staff.full_name,
-    phone_number: phone,
-    vehicle_number: null,
-    vehicle_type: null,
-    status: 'Available',
-    is_active: staff.active !== false,
-  });
+    if (existing) {
+      await db('delivery_riders').where({ id: existing.id }).update({
+        full_name: staff.name || staff.full_name,
+        phone_number: phone,
+        is_active: staff.active !== false,
+        status: staff.active === false ? 'Offline' : existing.status || 'Available',
+      });
+      return;
+    }
+
+    await db('delivery_riders').insert({
+      id: generateId(),
+      full_name: staff.name || staff.full_name,
+      phone_number: phone,
+      vehicle_number: null,
+      vehicle_type: null,
+      status: 'Available',
+      is_active: staff.active !== false,
+    });
+  } catch (error) {
+    console.error('Failed to sync rider profile for staff:', error.message);
+  }
 }
 
 function normalizeRole(role) {
