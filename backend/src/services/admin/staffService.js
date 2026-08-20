@@ -3,7 +3,7 @@ const db = require('../../config/database');
 const { NotFoundError, BadRequestError } = require('../../errors/AppError');
 const { generateId } = require('../../utils/helpers');
 
-const ALLOWED_ROLES = ['admin', 'super-admin', 'manager', 'cashier', 'kitchen'];
+const ALLOWED_ROLES = ['admin', 'super-admin', 'manager', 'cashier', 'kitchen', 'rider'];
 
 let phoneColumnCache = null;
 
@@ -28,6 +28,32 @@ function formatStaff(row) {
     createdAt: row.created_at,
     lastLoginAt: row.last_login_at,
   };
+}
+
+async function syncRiderProfile(staff) {
+  if (!staff || String(staff.role).toLowerCase() !== 'rider') return;
+  const phone = String(staff.phone || '').trim();
+  if (!phone) return;
+
+  const existing = await db('delivery_riders').where({ phone_number: phone }).first();
+  if (existing) {
+    await db('delivery_riders').where({ id: existing.id }).update({
+      full_name: staff.name || staff.full_name,
+      is_active: staff.active !== false,
+      status: staff.active === false ? 'Offline' : existing.status || 'Available',
+    });
+    return;
+  }
+
+  await db('delivery_riders').insert({
+    id: generateId(),
+    full_name: staff.name || staff.full_name,
+    phone_number: phone,
+    vehicle_number: null,
+    vehicle_type: null,
+    status: 'Available',
+    is_active: staff.active !== false,
+  });
 }
 
 function normalizeRole(role) {
@@ -108,6 +134,13 @@ async function createStaff(payload) {
     throw new BadRequestError('An account with this email already exists');
   }
 
+  if (normalizeRole(payload.role) === 'rider') {
+    const phone = payload.phone ? String(payload.phone).trim() : '';
+    if (!phone) {
+      throw new BadRequestError('Phone is required for rider staff accounts');
+    }
+  }
+
   const id = generateId();
   const passwordHash = await bcrypt.hash(password, 10);
   const row = {
@@ -124,7 +157,9 @@ async function createStaff(payload) {
   }
 
   await db('admin_users').insert(row);
-  return getStaffById(id);
+  const staff = await getStaffById(id);
+  await syncRiderProfile(staff);
+  return staff;
 }
 
 async function updateStaff(id, payload, actorId) {
@@ -184,7 +219,9 @@ async function updateStaff(id, payload, actorId) {
   }
 
   await db('admin_users').where({ id }).update(updates);
-  return getStaffById(id);
+  const staff = await getStaffById(id);
+  await syncRiderProfile(staff);
+  return staff;
 }
 
 async function toggleStaffActive(id, actorId) {

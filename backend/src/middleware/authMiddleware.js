@@ -26,7 +26,7 @@ function authenticateAdmin(req, _res, next) {
   }
 }
 
-/** Admin staff or kitchen staff (admin_users JWT). */
+/** Kitchen staff only (admin_users role=kitchen). */
 function authenticateKitchen(req, _res, next) {
   const header = req.headers.authorization || '';
   const [type, token] = header.split(' ');
@@ -37,13 +37,13 @@ function authenticateKitchen(req, _res, next) {
 
   try {
     const payload = authService.verifyToken(token);
-    if (payload.role === 'rider') {
+    if (String(payload.role || '').toLowerCase() !== 'kitchen') {
       return next(new UnauthorizedError('Kitchen access required'));
     }
     req.admin = {
       id: payload.sub,
       email: payload.email,
-      role: payload.role || 'kitchen',
+      role: 'kitchen',
       full_name: payload.name,
     };
     req.actor = 'kitchen';
@@ -53,7 +53,7 @@ function authenticateKitchen(req, _res, next) {
   }
 }
 
-/** Rider JWT from /auth/rider-login. */
+/** Rider staff JWT (admin_users role=rider) or legacy rider phone JWT. */
 function authenticateRider(req, _res, next) {
   const header = req.headers.authorization || '';
   const [type, token] = header.split(' ');
@@ -64,13 +64,14 @@ function authenticateRider(req, _res, next) {
 
   try {
     const payload = authService.verifyToken(token);
-    if (payload.role !== 'rider') {
+    if (String(payload.role || '').toLowerCase() !== 'rider') {
       return next(new UnauthorizedError('Rider access required'));
     }
     req.rider = {
       id: payload.sub,
       name: payload.name,
-      phone: payload.phone,
+      phone: payload.phone || null,
+      email: payload.email || null,
       role: 'rider',
     };
     req.actor = 'rider';

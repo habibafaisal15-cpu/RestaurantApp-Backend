@@ -1,7 +1,11 @@
 const authService = require('../../services/auth/authService');
 
 async function login(req, res) {
-  const result = await authService.login(req.body.email, req.body.password);
+  const result = await authService.login(
+    req.body.email,
+    req.body.password,
+    req.body.portal || 'admin',
+  );
   res.json({ success: true, data: result });
 }
 

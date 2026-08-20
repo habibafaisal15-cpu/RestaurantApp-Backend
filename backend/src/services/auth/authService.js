@@ -17,6 +17,7 @@ function sanitizeAdmin(admin) {
     full_name: admin.full_name,
     email: admin.email,
     role: admin.role,
+    phone: admin.phone || null,
   };
 }
 
@@ -28,7 +29,7 @@ function generateResetToken() {
   return crypto.randomBytes(32).toString('hex');
 }
 
-async function login(email, password) {
+async function login(email, password, portal = 'admin') {
   const admin = await db('admin_users')
     .where({ email: email.toLowerCase().trim(), is_active: true })
     .first();
@@ -42,6 +43,25 @@ async function login(email, password) {
     throw new UnauthorizedError('Invalid email or password');
   }
 
+  const role = String(admin.role || 'admin').toLowerCase();
+  const site = String(portal || 'admin').toLowerCase();
+
+  if (site === 'admin' && (role === 'kitchen' || role === 'rider')) {
+    throw new UnauthorizedError(
+      role === 'kitchen'
+        ? 'Kitchen staff must sign in on the Kitchen site'
+        : 'Riders must sign in on the Rider site',
+    );
+  }
+
+  if (site === 'kitchen' && role !== 'kitchen') {
+    throw new UnauthorizedError('Only kitchen staff can sign in here');
+  }
+
+  if (site === 'rider' && role !== 'rider') {
+    throw new UnauthorizedError('Only riders can sign in here');
+  }
+
   await db('admin_users')
     .where({ id: admin.id })
     .update({ last_login_at: new Date() });
@@ -52,6 +72,7 @@ async function login(email, password) {
       email: admin.email,
       role: admin.role,
       name: admin.full_name,
+      phone: admin.phone || null,
     },
     jwtSecret,
     { expiresIn: jwtExpiresIn },

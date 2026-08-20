@@ -3,6 +3,7 @@ const { z } = require('zod');
 const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6),
+  portal: z.enum(['admin', 'kitchen', 'rider']).optional().default('admin'),
 });
 
 const riderLoginSchema = z.object({

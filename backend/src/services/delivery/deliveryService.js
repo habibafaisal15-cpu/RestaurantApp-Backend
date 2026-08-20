@@ -555,6 +555,20 @@ async function listRiderOrders(riderPhone, filters = {}) {
     .where('rider_phone', riderPhone)
     .orderBy('order_time', 'desc');
 
+  // Also match by trailing digits in case formatting differs
+  const digits = String(riderPhone).replace(/\D/g, '');
+  if (digits.length >= 10) {
+    query = db('delivery_orders')
+      .where(function matchPhone() {
+        this.where('rider_phone', riderPhone).orWhere(
+          'rider_phone',
+          'like',
+          `%${digits.slice(-10)}`,
+        );
+      })
+      .orderBy('order_time', 'desc');
+  }
+
   if (filters.status === 'active') {
     query = query.whereIn('order_status', [
       'Order Prepared',
