@@ -178,17 +178,25 @@ async function resetPassword(token, newPassword) {
 }
 
 async function riderLogin(phone) {
-  const normalized = String(phone || '').trim();
+  const normalized = String(phone || '').replace(/[^\d+]/g, '').trim();
   if (!normalized) {
     throw new BadRequestError('Phone number is required');
   }
 
-  const rider = await db('delivery_riders')
-    .where({ phone_number: normalized })
-    .first();
+  const digits = normalized.replace(/\D/g, '');
+  const last10 = digits.slice(-10);
+
+  let rider = await db('delivery_riders').where({ phone_number: normalized }).first();
+  if (!rider && digits) {
+    rider = await db('delivery_riders').where({ phone_number: digits }).first();
+  }
+  if (!rider && last10.length >= 10) {
+    const riders = await db('delivery_riders').select('*');
+    rider = riders.find((row) => String(row.phone_number || '').replace(/\D/g, '').endsWith(last10));
+  }
 
   if (!rider) {
-    throw new UnauthorizedError('Rider not found. Ask admin to add your number.');
+    throw new UnauthorizedError('Rider not found. Ask admin to add your number in Riders.');
   }
 
   if (String(rider.status || '').toLowerCase() === 'inactive') {
