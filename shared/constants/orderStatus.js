@@ -1,4 +1,5 @@
 const ORDER_STATUSES = [
+  'Draft',
   'New',
   'Accepted',
   'Preparing',
@@ -10,9 +11,10 @@ const ORDER_STATUSES = [
 ];
 
 const STATUS_TRANSITIONS = {
+  Draft: ['Preparing', 'Delivered', 'Cancelled'],
   New: ['Accepted', 'Rejected', 'Cancelled'],
   Accepted: ['Preparing', 'Cancelled'],
-  Preparing: ['Rider Assigned', 'Cancelled'],
+  Preparing: ['Rider Assigned', 'Delivered', 'Cancelled'],
   'Rider Assigned': ['Out for Delivery', 'Cancelled'],
   'Out for Delivery': ['Delivered', 'Cancelled'],
   Delivered: [],
@@ -21,6 +23,10 @@ const STATUS_TRANSITIONS = {
 };
 
 const ADMIN_ACTIONS = {
+  Draft: [
+    { action: 'request_bill', label: 'Request Bill', next_status: 'Delivered' },
+    { action: 'cancel', label: 'Cancel Order', next_status: 'Cancelled' },
+  ],
   New: [
     { action: 'accept', label: 'Accept Order', next_status: 'Accepted' },
     { action: 'reject', label: 'Reject Order', next_status: 'Rejected' },

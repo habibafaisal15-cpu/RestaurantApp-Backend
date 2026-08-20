@@ -40,7 +40,8 @@ function isOnlineDelivered(order) {
 function isInRestaurantSale(order) {
   return (
     isInRestaurantChannel(order)
-    && !['Cancelled', 'Rejected'].includes(order.order_status)
+    && !['Cancelled', 'Rejected', 'Draft'].includes(order.order_status)
+    && String(order.payment_status || '').toLowerCase() !== 'pending'
   );
 }
 
@@ -204,8 +205,8 @@ function applySalesJoinFilters(query, params, from, to) {
       this.where(function inRestaurantSales() {
         this.where('orders.order_channel', 'IN_RESTAURANT').whereNotIn(
           'orders.order_status',
-          ['Cancelled', 'Rejected'],
-        );
+          ['Cancelled', 'Rejected', 'Draft'],
+        ).whereNot('orders.payment_status', 'Pending');
       }).orWhere(function onlineDeliveredSales() {
         this.where(function notInRestaurant() {
           this.where('orders.order_channel', '!=', 'IN_RESTAURANT').orWhereNull(

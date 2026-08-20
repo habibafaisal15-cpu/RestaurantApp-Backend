@@ -179,6 +179,11 @@ async function createWalkInOrder(req, res) {
   res.status(201).json({ success: true, data });
 }
 
+async function requestBill(req, res) {
+  const data = await posOrderService.requestBill(req.params.id, req.body);
+  res.json({ success: true, data });
+}
+
 async function listMarketingDeals(req, res) {
   const data = await marketingDealService.listDeals(req.query);
   res.json({ success: true, data });
@@ -289,6 +294,7 @@ module.exports = {
   toggleDeliveryLocation,
   deleteDeliveryLocation,
   createWalkInOrder,
+  requestBill,
   updateHeroSlides,
   listMarketingDeals,
   getMarketingDeal,

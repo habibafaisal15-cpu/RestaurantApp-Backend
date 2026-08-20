@@ -128,6 +128,11 @@ const walkInOrderSchema = z.object({
   notes: z.string().optional(),
 });
 
+const requestBillSchema = z.object({
+  paymentMethod: z.enum(['cash', 'card', 'online']).default('cash'),
+  cashierName: z.string().optional(),
+});
+
 const staffRoleSchema = z.enum(['admin', 'super-admin', 'manager', 'cashier', 'store-admin']);
 
 const createStaffSchema = z.object({
@@ -198,6 +203,7 @@ module.exports = {
   createDeliveryLocationSchema,
   updateDeliveryLocationSchema,
   walkInOrderSchema,
+  requestBillSchema,
   createStaffSchema,
   updateStaffSchema,
   adjustStockSchema,

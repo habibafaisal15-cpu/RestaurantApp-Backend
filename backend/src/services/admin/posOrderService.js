@@ -1,5 +1,5 @@
 const db = require('../../config/database');
-const { BadRequestError } = require('../../errors/AppError');
+const { BadRequestError, NotFoundError } = require('../../errors/AppError');
 const {
   generateId,
   generateTrackingToken,
@@ -45,13 +45,20 @@ function mapPaymentStatus(status, method) {
   return 'Pending';
 }
 
+function mapUiStatus(orderStatus, channel) {
+  if (orderStatus === 'Draft') return 'draft';
+  if (channel === 'IN_RESTAURANT' && orderStatus === 'Delivered') return 'served';
+  if (channel === 'IN_RESTAURANT' && orderStatus === 'Preparing') return 'preparing';
+  return String(orderStatus || '').toLowerCase();
+}
+
 function formatWalkInOrder(order, items) {
   return {
     id: order.id,
     orderNumber: order.order_number,
     channel: order.order_channel,
     type: order.order_type,
-    status: 'preparing',
+    status: mapUiStatus(order.order_status, order.order_channel),
     orderStatus: order.order_status,
     customer: {
       name: order.customer_name,
@@ -132,14 +139,19 @@ async function createWalkInOrder(payload) {
     }
 
     const orderType = payload.type || 'DINE_IN';
+    const isDineIn = orderType === 'DINE_IN';
     const tableNumber = payload.tableNumber || null;
     const customerName = payload.customer?.name || 'Walk-in Guest';
     const customerPhone = payload.customer?.phone || '0000000000';
     const paymentMethod = mapPaymentMethod(payload.paymentMethod);
-    const paymentStatus = mapPaymentStatus(payload.paymentStatus, paymentMethod);
+    // Dine-in stays unpaid draft until customer asks for the bill.
+    const paymentStatus = isDineIn
+      ? 'Pending'
+      : mapPaymentStatus(payload.paymentStatus, paymentMethod);
+    const orderStatus = isDineIn ? 'Draft' : 'Preparing';
 
     let deliveryAddress = 'In-Restaurant';
-    if (orderType === 'DINE_IN' && tableNumber) {
+    if (isDineIn && tableNumber) {
       deliveryAddress = `Table ${tableNumber}`;
     } else if (orderType === 'TAKEAWAY') {
       deliveryAddress = 'Takeaway Counter';
@@ -169,7 +181,7 @@ async function createWalkInOrder(payload) {
       delivery_address: deliveryAddress,
       delivery_instructions: payload.notes || null,
       zone_id: zoneId,
-      order_status: 'Preparing',
+      order_status: orderStatus,
       tracking_token: trackingToken,
       payment_status: paymentStatus,
       payment_method: paymentMethod,
@@ -192,9 +204,11 @@ async function createWalkInOrder(payload) {
     await trx('order_tracking_logs').insert({
       id: generateId(),
       order_id: orderId,
-      status: 'Preparing',
+      status: orderStatus,
       set_by: payload.cashierName || 'POS',
-      note: 'Walk-in order placed',
+      note: isDineIn
+        ? 'Dine-in draft opened (awaiting bill request)'
+        : 'Walk-in order placed',
     });
 
     const order = await trx('delivery_orders').where({ id: orderId }).first();
@@ -230,6 +244,47 @@ async function createWalkInOrder(payload) {
   });
 }
 
+async function requestBill(orderId, payload = {}) {
+  const order = await db('delivery_orders').where({ id: orderId }).first();
+  if (!order) {
+    throw new NotFoundError('Order not found');
+  }
+
+  if (order.order_channel !== 'IN_RESTAURANT' || order.order_type !== 'DINE_IN') {
+    throw new BadRequestError('Only dine-in orders can request a bill');
+  }
+
+  if (order.order_status !== 'Draft') {
+    throw new BadRequestError('Bill can only be requested for draft dine-in orders');
+  }
+
+  const paymentMethod = mapPaymentMethod(payload.paymentMethod || 'cash');
+  const setBy = payload.cashierName || 'POS';
+
+  await db.transaction(async (trx) => {
+    await trx('delivery_orders')
+      .where({ id: orderId })
+      .update({
+        order_status: 'Delivered',
+        payment_status: 'Paid',
+        payment_method: paymentMethod,
+      });
+
+    await trx('order_tracking_logs').insert({
+      id: generateId(),
+      order_id: orderId,
+      status: 'Delivered',
+      set_by: setBy,
+      note: 'Customer requested bill — order settled',
+    });
+  });
+
+  const updated = await db('delivery_orders').where({ id: orderId }).first();
+  const items = await db('delivery_order_items').where({ order_id: orderId });
+  return formatWalkInOrder(updated, items);
+}
+
 module.exports = {
   createWalkInOrder,
+  requestBill,
 };
