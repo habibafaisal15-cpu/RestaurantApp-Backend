@@ -6,6 +6,7 @@ function createCustomerEmit(io) {
     if (!io) return;
 
     io.to('admin:delivery').emit(event, payload);
+    io.to('kitchen:orders').emit(event, payload);
 
     if (payload?.tracking_token) {
       io.to(`track:${payload.tracking_token}`).emit(event, payload);
@@ -13,6 +14,11 @@ function createCustomerEmit(io) {
 
     if (payload?.order_id) {
       io.to(`order:${payload.order_id}`).emit(event, payload);
+    }
+
+    const riderPhone = payload?.rider?.phone;
+    if (riderPhone) {
+      io.to(`rider:${riderPhone}`).emit(event, payload);
     }
   };
 }
@@ -35,9 +41,14 @@ function emitTrackingSnapshotToSocket(socket, order) {
       message: `Your order ${order.order_number} has been accepted`,
     });
   } else if (
-    ['Preparing', 'Rider Assigned', 'Out for Delivery', 'Delivered'].includes(
-      order.order_status,
-    )
+    [
+      'Sent to Kitchen',
+      'Preparing',
+      'Order Prepared',
+      'Rider Assigned',
+      'Out for Delivery',
+      'Delivered',
+    ].includes(order.order_status)
   ) {
     socket.emit(WS_EVENTS.ORDER_ACCEPTED, {
       ...payload,

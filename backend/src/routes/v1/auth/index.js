@@ -4,6 +4,7 @@ const { authenticateAdmin } = require('../../../middleware/authMiddleware');
 const {
   validateBody,
   loginSchema,
+  riderLoginSchema,
   changePasswordSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
@@ -12,6 +13,7 @@ const {
 const router = express.Router();
 
 router.post('/login', validateBody(loginSchema), authController.login);
+router.post('/rider-login', validateBody(riderLoginSchema), authController.riderLogin);
 router.post('/forgot-password', validateBody(forgotPasswordSchema), authController.forgotPassword);
 router.post('/reset-password', validateBody(resetPasswordSchema), authController.resetPassword);
 router.get('/me', authenticateAdmin, authController.me);

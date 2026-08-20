@@ -9,14 +9,14 @@ function buildRiderAssignTimer(order) {
     return null;
   }
 
-  if (order.rider_name || !['Accepted', 'Preparing'].includes(order.order_status)) {
+  if (order.rider_name || !['Accepted', 'Sent to Kitchen'].includes(order.order_status)) {
     return {
       accepted_at: order.accepted_at,
       rider_assign_deadline: order.rider_assign_deadline,
       rider_assign_seconds_total: RIDER_ASSIGN_TIMEOUT_SECONDS,
       rider_assign_seconds_remaining: 0,
       rider_assign_expired: false,
-      rider_assigned: true,
+      rider_assigned: Boolean(order.rider_name),
     };
   }
 
@@ -51,7 +51,9 @@ function statusMessage(status, orderNumber) {
   const messages = {
     New: `Order ${orderNumber} received`,
     Accepted: `Order ${orderNumber} has been accepted`,
+    'Sent to Kitchen': `Order ${orderNumber} was sent to the kitchen`,
     Preparing: `Order ${orderNumber} is being prepared`,
+    'Order Prepared': `Order ${orderNumber} is ready for pickup`,
     'Rider Assigned': `A rider has been assigned to order ${orderNumber}`,
     'Out for Delivery': `Order ${orderNumber} is out for delivery`,
     Delivered: `Order ${orderNumber} has been delivered`,

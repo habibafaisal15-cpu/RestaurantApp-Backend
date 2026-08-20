@@ -177,6 +177,48 @@ async function resetPassword(token, newPassword) {
   return { message: 'Password reset successfully' };
 }
 
+async function riderLogin(phone) {
+  const normalized = String(phone || '').trim();
+  if (!normalized) {
+    throw new BadRequestError('Phone number is required');
+  }
+
+  const rider = await db('delivery_riders')
+    .where({ phone_number: normalized })
+    .first();
+
+  if (!rider) {
+    throw new UnauthorizedError('Rider not found. Ask admin to add your number.');
+  }
+
+  if (String(rider.status || '').toLowerCase() === 'inactive') {
+    throw new UnauthorizedError('Rider account is inactive');
+  }
+
+  const token = jwt.sign(
+    {
+      sub: rider.id,
+      role: 'rider',
+      name: rider.full_name,
+      phone: rider.phone_number,
+    },
+    jwtSecret,
+    { expiresIn: jwtExpiresIn },
+  );
+
+  return {
+    token,
+    expires_in: jwtExpiresIn,
+    rider: {
+      id: rider.id,
+      name: rider.full_name,
+      phone: rider.phone_number,
+      status: rider.status,
+      role: 'rider',
+    },
+  };
+}
+
 function verifyToken(token) {
   try {
     return jwt.verify(token, jwtSecret);
@@ -187,6 +229,7 @@ function verifyToken(token) {
 
 module.exports = {
   login,
+  riderLogin,
   getAdminById,
   changePassword,
   forgotPassword,

@@ -3,7 +3,7 @@ const db = require('../../config/database');
 const { NotFoundError, BadRequestError } = require('../../errors/AppError');
 const { generateId } = require('../../utils/helpers');
 
-const ALLOWED_ROLES = ['admin', 'super-admin', 'manager', 'cashier'];
+const ALLOWED_ROLES = ['admin', 'super-admin', 'manager', 'cashier', 'kitchen'];
 
 let phoneColumnCache = null;
 

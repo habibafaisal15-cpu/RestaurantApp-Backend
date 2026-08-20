@@ -3,6 +3,8 @@ const { NotFoundError, BadRequestError } = require('../../errors/AppError');
 const {
   STATUS_TRANSITIONS,
   ADMIN_ACTIONS,
+  KITCHEN_ACTIONS,
+  RIDER_ACTIONS,
   WS_EVENTS,
 } = require('../../../../shared/constants/orderStatus');
 const { generateId } = require('../../utils/helpers');
@@ -96,7 +98,18 @@ async function listOrders(filters = {}) {
     if (filters.status === 'New') {
       query = query.whereIn('order_status', ['New', 'Accepted']);
     } else if (filters.status === 'Preparing') {
-      query = query.whereIn('order_status', ['Preparing', 'Rider Assigned']);
+      query = query.whereIn('order_status', [
+        'Sent to Kitchen',
+        'Preparing',
+        'Order Prepared',
+        'Rider Assigned',
+      ]);
+    } else if (filters.status === 'kitchen') {
+      query = query.whereIn('order_status', [
+        'Sent to Kitchen',
+        'Preparing',
+        'Order Prepared',
+      ]);
     } else {
       query = query.where('order_status', filters.status);
     }
@@ -210,7 +223,11 @@ async function getAdminStats() {
     .first();
 
   const newOrders = (byStatus.New || 0) + (byStatus.Accepted || 0);
-  const preparing = (byStatus.Preparing || 0) + (byStatus['Rider Assigned'] || 0);
+  const preparing =
+    (byStatus['Sent to Kitchen'] || 0)
+    + (byStatus.Preparing || 0)
+    + (byStatus['Order Prepared'] || 0)
+    + (byStatus['Rider Assigned'] || 0);
   const outForDelivery = byStatus['Out for Delivery'] || 0;
   const deliveredToday = Number(deliveredTodayRow?.count || 0);
   const cancelled = (byStatus.Cancelled || 0) + (byStatus.Rejected || 0);
@@ -221,7 +238,9 @@ async function getAdminStats() {
   const breakdown = [
     { status: 'New', count: byStatus.New || 0 },
     { status: 'Accepted', count: byStatus.Accepted || 0 },
+    { status: 'Sent to Kitchen', count: byStatus['Sent to Kitchen'] || 0 },
     { status: 'Preparing', count: byStatus.Preparing || 0 },
+    { status: 'Order Prepared', count: byStatus['Order Prepared'] || 0 },
     { status: 'Rider Assigned', count: byStatus['Rider Assigned'] || 0 },
     { status: 'Out for Delivery', count: outForDelivery },
     { status: 'Delivered Today', count: deliveredToday },
@@ -319,6 +338,24 @@ async function updateOrderStatus(orderId, { status, set_by, note }, emit) {
       });
     }
 
+    if (status === 'Sent to Kitchen') {
+      emitCustomerEvent(
+        emit,
+        WS_EVENTS.SENT_TO_KITCHEN,
+        updatedRaw,
+        `Order ${updated.order_number} sent to kitchen`,
+      );
+    }
+
+    if (status === 'Order Prepared') {
+      emitCustomerEvent(
+        emit,
+        WS_EVENTS.ORDER_PREPARED,
+        updatedRaw,
+        `Order ${updated.order_number} is ready for pickup`,
+      );
+    }
+
     if (status === 'Delivered') {
       emit(WS_EVENTS.DELIVERED, buildCustomerNotification(updatedRaw));
     }
@@ -331,12 +368,19 @@ async function assignRider(orderId, payload, emit) {
   const order = await db('delivery_orders').where({ id: orderId }).first();
   if (!order) throw new NotFoundError('Order not found');
 
-  if (!['Preparing', 'Accepted'].includes(order.order_status)) {
-    throw new BadRequestError('Rider can only be assigned when order is Accepted or Preparing');
+  const assignable = [
+    'Accepted',
+    'Sent to Kitchen',
+    'Preparing',
+    'Order Prepared',
+    'Rider Assigned',
+  ];
+  if (!assignable.includes(order.order_status)) {
+    throw new BadRequestError('Rider cannot be assigned in the current order status');
   }
 
   const timer = buildRiderAssignTimer(order);
-  if (timer?.rider_assign_expired) {
+  if (timer?.rider_assign_expired && order.order_status === 'Accepted') {
     throw new BadRequestError(
       `Rider must be assigned within ${RIDER_ASSIGN_TIMEOUT_SECONDS} seconds of accepting the order`,
     );
@@ -344,18 +388,22 @@ async function assignRider(orderId, payload, emit) {
 
   const { rider_name: riderName, rider_phone: riderPhone } = payload;
 
+  // Keep kitchen flow intact — only jump to Rider Assigned once food is prepared.
+  const nextStatus =
+    order.order_status === 'Order Prepared' ? 'Rider Assigned' : order.order_status;
+
   await db.transaction(async (trx) => {
     await trx('delivery_orders').where({ id: orderId }).update({
       rider_id: null,
       rider_name: riderName,
       rider_phone: riderPhone,
-      order_status: 'Rider Assigned',
+      order_status: nextStatus,
     });
 
     await trx('order_tracking_logs').insert({
       id: generateId(),
       order_id: orderId,
-      status: 'Rider Assigned',
+      status: nextStatus === 'Rider Assigned' ? 'Rider Assigned' : order.order_status,
       set_by: payload.set_by || 'Admin',
       note: `Rider assigned: ${riderName} (${riderPhone})`,
     });
@@ -384,8 +432,9 @@ async function assignRider(orderId, payload, emit) {
 }
 
 async function expireUnassignedOrders(emit) {
+  // Only auto-cancel orders that were accepted but never sent to kitchen / assigned.
   const expiredOrders = await db('delivery_orders')
-    .whereIn('order_status', ['Accepted', 'Preparing'])
+    .where('order_status', 'Accepted')
     .whereNotNull('rider_assign_deadline')
     .where('rider_assign_deadline', '<', new Date())
     .whereNull('rider_name');
@@ -445,6 +494,88 @@ async function getTrackingTimeline(orderId) {
   };
 }
 
+async function listKitchenOrders(filters = {}) {
+  const status = filters.board || filters.status;
+  let query = db('delivery_orders')
+    .where('order_channel', 'ONLINE')
+    .orderBy('order_time', 'desc');
+
+  if (status === 'incoming' || status === 'Sent to Kitchen') {
+    query = query.where('order_status', 'Sent to Kitchen');
+  } else if (status === 'preparing' || status === 'Preparing') {
+    query = query.where('order_status', 'Preparing');
+  } else if (status === 'prepared' || status === 'Order Prepared') {
+    query = query.whereIn('order_status', ['Order Prepared', 'Rider Assigned']);
+  } else if (status === 'history') {
+    query = query.whereIn('order_status', [
+      'Order Prepared',
+      'Rider Assigned',
+      'Out for Delivery',
+      'Delivered',
+      'Cancelled',
+    ]);
+  } else {
+    query = query.whereIn('order_status', [
+      'Sent to Kitchen',
+      'Preparing',
+      'Order Prepared',
+      'Rider Assigned',
+    ]);
+  }
+
+  const orders = await query.limit(Number(filters.limit) || 100);
+  const zoneMap = await getZoneMap();
+  const detailed = [];
+
+  for (const order of orders) {
+    const items = await db('delivery_order_items').where({ order_id: order.id });
+    detailed.push({
+      ...formatOrderListItem(order, zoneMap[order.zone_id], items.length),
+      delivery_instructions: order.delivery_instructions,
+      items: items.map((item) => ({
+        id: item.id,
+        product_id: item.product_id,
+        product_name: item.product_name,
+        quantity: item.quantity,
+        unit_price: Number(item.unit_price),
+        total_price: Number(item.total_price),
+        notes: item.notes || null,
+      })),
+      kitchen_actions: KITCHEN_ACTIONS[order.order_status] || [],
+    });
+  }
+
+  return detailed;
+}
+
+async function listRiderOrders(riderPhone, filters = {}) {
+  if (!riderPhone) return [];
+
+  let query = db('delivery_orders')
+    .where('rider_phone', riderPhone)
+    .orderBy('order_time', 'desc');
+
+  if (filters.status === 'active') {
+    query = query.whereIn('order_status', [
+      'Order Prepared',
+      'Rider Assigned',
+      'Out for Delivery',
+    ]);
+  } else if (filters.status === 'ready') {
+    query = query.whereIn('order_status', ['Order Prepared', 'Rider Assigned']);
+  }
+
+  const orders = await query.limit(Number(filters.limit) || 50);
+  const zoneMap = await getZoneMap();
+
+  return orders.map((order) => ({
+    ...formatOrderListItem(order, zoneMap[order.zone_id], 0),
+    delivery_address: order.delivery_address,
+    delivery_instructions: order.delivery_instructions,
+    rider_actions: RIDER_ACTIONS[order.order_status] || [],
+  }));
+}
+
 module.exports = {
   listOrders,
   getOrderById,
@@ -454,4 +585,6 @@ module.exports = {
   assignRider,
   expireUnassignedOrders,
   getTrackingTimeline,
+  listKitchenOrders,
+  listRiderOrders,
 };

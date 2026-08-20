@@ -7,6 +7,14 @@ function registerSocketHandlers(io) {
       socket.join('admin:delivery');
     });
 
+    socket.on('join:kitchen', () => {
+      socket.join('kitchen:orders');
+    });
+
+    socket.on('join:rider', ({ phone }) => {
+      if (phone) socket.join(`rider:${phone}`);
+    });
+
     socket.on('join:track', async ({ token }) => {
       if (!token) return;
 

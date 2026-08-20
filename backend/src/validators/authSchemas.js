@@ -5,6 +5,10 @@ const loginSchema = z.object({
   password: z.string().min(6),
 });
 
+const riderLoginSchema = z.object({
+  phone: z.string().min(5).max(20),
+});
+
 const changePasswordSchema = z.object({
   current_password: z.string().min(6),
   new_password: z.string().min(8, 'New password must be at least 8 characters'),
@@ -28,6 +32,7 @@ function validateBody(schema) {
 
 module.exports = {
   loginSchema,
+  riderLoginSchema,
   changePasswordSchema,
   forgotPasswordSchema,
   resetPasswordSchema,

@@ -61,7 +61,9 @@ const updateStatusSchema = z.object({
   status: z.enum([
     'Accepted',
     'Rejected',
+    'Sent to Kitchen',
     'Preparing',
+    'Order Prepared',
     'Rider Assigned',
     'Out for Delivery',
     'Delivered',
@@ -69,6 +71,7 @@ const updateStatusSchema = z.object({
   ]),
   set_by: z.string().min(1).max(100).optional(),
   note: z.string().max(255).optional(),
+  actor: z.enum(['admin', 'kitchen', 'rider']).optional(),
 });
 
 const assignRiderSchema = z.object({

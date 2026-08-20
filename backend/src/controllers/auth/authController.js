@@ -29,8 +29,14 @@ async function resetPassword(req, res) {
   res.json({ success: true, data: result });
 }
 
+async function riderLogin(req, res) {
+  const result = await authService.riderLogin(req.body.phone);
+  res.json({ success: true, data: result });
+}
+
 module.exports = {
   login,
+  riderLogin,
   me,
   changePassword,
   forgotPassword,

@@ -11,6 +11,7 @@ const ordersRoutes = require('./orders');
 const adminDealsRoutes = require('./admin/deals');
 const adminStaffRoutes = require('./admin/staff');
 const adminInventoryRoutes = require('./admin/inventory');
+const kitchenRoutes = require('./kitchen');
 const cronRoutes = require('./cron');
 
 const router = express.Router();
@@ -27,6 +28,7 @@ router.use('/orders', ordersRoutes);
 router.use('/admin/deals', adminDealsRoutes);
 router.use('/admin/staff', adminStaffRoutes);
 router.use('/admin/inventory', adminInventoryRoutes);
+router.use('/kitchen', kitchenRoutes);
 router.use('/cron', cronRoutes);
 router.get('/health', (_req, res) => {
   res.json({ success: true, message: 'API is running' });
