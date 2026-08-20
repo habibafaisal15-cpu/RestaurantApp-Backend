@@ -36,14 +36,18 @@ async function ensureOpsStaffAccounts() {
       .where({ email: account.email })
       .first();
 
+    const passwordHash = await bcrypt.hash(account.password, 10);
+
     if (existing) {
+      // Always refresh demo passwords so a corrupt hash cannot hang login.
       await db('admin_users')
         .where({ id: existing.id })
         .update({
           role: account.role,
           is_active: true,
-          full_name: existing.full_name || account.full_name,
-          phone: existing.phone || account.phone,
+          full_name: account.full_name,
+          phone: account.phone || existing.phone || null,
+          password_hash: passwordHash,
         });
       continue;
     }
@@ -52,7 +56,7 @@ async function ensureOpsStaffAccounts() {
       id: generateId(),
       full_name: account.full_name,
       email: account.email,
-      password_hash: await bcrypt.hash(account.password, 10),
+      password_hash: passwordHash,
       role: account.role,
       phone: account.phone,
       is_active: true,
