@@ -133,6 +133,19 @@ const requestBillSchema = z.object({
   cashierName: z.string().optional(),
 });
 
+const createPayableSchema = z.object({
+  supplierName: z.string().min(1).max(120),
+  amount: z.coerce.number().positive(),
+  paidAmount: z.coerce.number().min(0).optional(),
+  reference: z.string().max(80).optional().nullable(),
+  dueDate: z.string().optional().nullable(),
+  notes: z.string().max(500).optional().nullable(),
+});
+
+const settlePayableSchema = z.object({
+  paidAmount: z.coerce.number().min(0).optional(),
+});
+
 const staffRoleSchema = z.enum(['admin', 'super-admin', 'manager', 'cashier', 'store-admin']);
 
 const createStaffSchema = z.object({
@@ -204,6 +217,8 @@ module.exports = {
   updateDeliveryLocationSchema,
   walkInOrderSchema,
   requestBillSchema,
+  createPayableSchema,
+  settlePayableSchema,
   createStaffSchema,
   updateStaffSchema,
   adjustStockSchema,

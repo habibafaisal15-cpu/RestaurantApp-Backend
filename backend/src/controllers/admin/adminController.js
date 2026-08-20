@@ -108,6 +108,41 @@ async function getSalesByDay(req, res) {
   res.json({ success: true, data });
 }
 
+async function getSalesCustomers(req, res) {
+  const data = await salesService.getCustomers(req.query);
+  res.json({ success: true, data });
+}
+
+async function getSalesDailyClosing(req, res) {
+  const data = await salesService.getDailyClosing(req.query);
+  res.json({ success: true, data });
+}
+
+async function getSalesCredit(req, res) {
+  const data = await salesService.getCreditReport(req.query);
+  res.json({ success: true, data });
+}
+
+async function getSalesProfit(req, res) {
+  const data = await salesService.getProfitByProduct(req.query);
+  res.json({ success: true, data });
+}
+
+async function listSalesPayables(req, res) {
+  const data = await salesService.listPayables(req.query);
+  res.json({ success: true, data });
+}
+
+async function createSalesPayable(req, res) {
+  const data = await salesService.createPayable(req.body);
+  res.status(201).json({ success: true, data });
+}
+
+async function settleSalesPayable(req, res) {
+  const data = await salesService.settlePayable(req.params.id, req.body);
+  res.json({ success: true, data });
+}
+
 async function listRiders(req, res) {
   const data = await riderService.listRiders(req.query);
   res.json({ success: true, data });
@@ -282,6 +317,13 @@ module.exports = {
   getSalesByItem,
   getSalesByCategory,
   getSalesByDay,
+  getSalesCustomers,
+  getSalesDailyClosing,
+  getSalesCredit,
+  getSalesProfit,
+  listSalesPayables,
+  createSalesPayable,
+  settleSalesPayable,
   listRiders,
   getRider,
   createRider,

@@ -295,11 +295,448 @@ async function getByCategory(params = {}) {
   }));
 }
 
+async function ensureReportExtrasSchema() {
+  const hasCost = await db.schema.hasColumn('products', 'cost_price');
+  if (!hasCost) {
+    await db.schema.alterTable('products', (table) => {
+      table.decimal('cost_price', 10, 2).nullable();
+    });
+  }
+
+  const hasPayables = await db.schema.hasTable('supplier_payables');
+  if (!hasPayables) {
+    await db.schema.createTable('supplier_payables', (table) => {
+      table.string('id', 36).primary();
+      table.string('supplier_name', 120).notNullable();
+      table.string('reference', 80).nullable();
+      table.decimal('amount', 12, 2).notNullable();
+      table.decimal('paid_amount', 12, 2).notNullable().defaultTo(0);
+      table.string('status', 20).notNullable().defaultTo('open'); // open | partial | paid
+      table.timestamp('due_date').nullable();
+      table.text('notes').nullable();
+      table.timestamp('created_at').defaultTo(db.fn.now());
+      table.timestamp('updated_at').defaultTo(db.fn.now());
+    });
+  }
+}
+
+async function getCustomers(params = {}) {
+  const { from, to } = resolveDateRange(params);
+  const orders = await baseOrdersQuery(from, to, params).select(
+    'customer_name',
+    'customer_phone',
+    'total_amount',
+    'order_status',
+    'payment_status',
+    'order_channel',
+    'order_time',
+    'discount',
+  );
+
+  const map = new Map();
+  for (const order of orders) {
+    if (['Cancelled', 'Rejected'].includes(order.order_status)) continue;
+    const phone = String(order.customer_phone || '').trim() || 'unknown';
+    const key = phone;
+    if (!map.has(key)) {
+      map.set(key, {
+        phone,
+        name: order.customer_name || 'Customer',
+        orders: 0,
+        revenue: 0,
+        discounts: 0,
+        lastOrderAt: order.order_time,
+        channels: { ONLINE: 0, IN_RESTAURANT: 0 },
+      });
+    }
+    const row = map.get(key);
+    row.orders += 1;
+    if (countsTowardSales(order)) {
+      row.revenue += Number(order.total_amount) || 0;
+      row.discounts += Number(order.discount) || 0;
+    }
+    const channel = salesChannelFor(order);
+    row.channels[channel] = (row.channels[channel] || 0) + 1;
+    if (new Date(order.order_time) > new Date(row.lastOrderAt)) {
+      row.lastOrderAt = order.order_time;
+      row.name = order.customer_name || row.name;
+    }
+  }
+
+  return Array.from(map.values())
+    .map((row) => ({
+      ...row,
+      revenue: Math.round(row.revenue),
+      discounts: Math.round(row.discounts),
+      averageOrder: row.orders ? Math.round(row.revenue / row.orders) : 0,
+    }))
+    .sort((a, b) => b.revenue - a.revenue);
+}
+
+async function getDailyClosing(params = {}) {
+  const { from, to } = resolveDateRange(params);
+  const orders = await baseOrdersQuery(from, to, params).select('*');
+  const salesOrders = orders.filter(countsTowardSales);
+
+  const paymentMethods = {
+    cash: { orders: 0, amount: 0 },
+    card: { orders: 0, amount: 0 },
+    online: { orders: 0, amount: 0 },
+  };
+  const channels = {
+    ONLINE: { orders: 0, amount: 0 },
+    IN_RESTAURANT: { orders: 0, amount: 0 },
+  };
+
+  let grossSales = 0;
+  let discounts = 0;
+  let tax = 0;
+  let serviceCharge = 0;
+  let deliveryFees = 0;
+
+  for (const order of salesOrders) {
+    const amount = Number(order.total_amount) || 0;
+    grossSales += amount;
+    discounts += Number(order.discount) || 0;
+    tax += Number(order.tax_amount) || 0;
+    serviceCharge += Number(order.service_charge) || 0;
+    deliveryFees += Number(order.delivery_fee) || 0;
+
+    const payKey = normalizePaymentKey(order.payment_method);
+    paymentMethods[payKey].orders += 1;
+    paymentMethods[payKey].amount += amount;
+
+    const channel = salesChannelFor(order);
+    channels[channel].orders += 1;
+    channels[channel].amount += amount;
+  }
+
+  const cancelled = orders.filter((o) =>
+    ['Cancelled', 'Rejected'].includes(o.order_status),
+  );
+  const openDrafts = orders.filter(
+    (o) => o.order_status === 'Draft' || String(o.payment_status).toLowerCase() === 'pending',
+  );
+
+  const byDay = await getByDay(params);
+
+  return {
+    from: from.toISOString(),
+    to: to.toISOString(),
+    grossSales: Math.round(grossSales),
+    netSales: Math.round(grossSales),
+    discounts: Math.round(discounts),
+    tax: Math.round(tax),
+    serviceCharge: Math.round(serviceCharge),
+    deliveryFees: Math.round(deliveryFees),
+    orderCount: salesOrders.length,
+    cancelledCount: cancelled.length,
+    cancelledAmount: Math.round(
+      cancelled.reduce((sum, o) => sum + (Number(o.total_amount) || 0), 0),
+    ),
+    openTabsCount: openDrafts.length,
+    openTabsAmount: Math.round(
+      openDrafts.reduce((sum, o) => sum + (Number(o.total_amount) || 0), 0),
+    ),
+    paymentMethods: Object.fromEntries(
+      Object.entries(paymentMethods).map(([k, v]) => [
+        k,
+        { orders: v.orders, amount: Math.round(v.amount) },
+      ]),
+    ),
+    channels: Object.fromEntries(
+      Object.entries(channels).map(([k, v]) => [
+        k,
+        { orders: v.orders, amount: Math.round(v.amount) },
+      ]),
+    ),
+    byDay,
+  };
+}
+
+async function getCreditReport(params = {}) {
+  const { from, to } = resolveDateRange(params);
+  const orders = await baseOrdersQuery(from, to, params)
+    .where(function creditFilter() {
+      this.where('order_status', 'Draft').orWhere(function unpaid() {
+        this.whereIn('payment_status', ['Pending', 'pending']).whereNotIn('order_status', [
+          'Cancelled',
+          'Rejected',
+          'Delivered',
+        ]);
+      });
+    })
+    .select(
+      'id',
+      'order_number',
+      'customer_name',
+      'customer_phone',
+      'table_number',
+      'order_status',
+      'payment_status',
+      'payment_method',
+      'total_amount',
+      'order_time',
+      'order_type',
+      'order_channel',
+    )
+    .orderBy('order_time', 'desc');
+
+  const rows = orders.map((order) => ({
+    id: order.id,
+    orderNumber: order.order_number,
+    customerName: order.customer_name,
+    customerPhone: order.customer_phone,
+    tableNumber: order.table_number,
+    status: order.order_status,
+    paymentStatus: order.payment_status,
+    paymentMethod: order.payment_method,
+    amount: Math.round(Number(order.total_amount) || 0),
+    orderTime: order.order_time,
+    type: order.order_type,
+    channel: order.order_channel,
+    kind: order.order_status === 'Draft' ? 'open_tab' : 'udhaar',
+  }));
+
+  const totalOutstanding = rows.reduce((sum, r) => sum + r.amount, 0);
+
+  return {
+    totalOutstanding: Math.round(totalOutstanding),
+    openTabs: rows.filter((r) => r.kind === 'open_tab').length,
+    creditOrders: rows.filter((r) => r.kind === 'udhaar').length,
+    rows,
+  };
+}
+
+function resolveUnitCost(row) {
+  const explicit = row.cost_price != null ? Number(row.cost_price) : null;
+  if (explicit != null && !Number.isNaN(explicit) && explicit >= 0) {
+    return { cost: explicit, estimated: false };
+  }
+  const price = Number(row.unit_price || row.price || 0);
+  return { cost: Math.round(price * 0.4), estimated: true };
+}
+
+async function getProfitByProduct(params = {}) {
+  await ensureReportExtrasSchema();
+  const { from, to } = resolveDateRange(params);
+
+  let query = db('delivery_order_items as items')
+    .join('delivery_orders as orders', 'items.order_id', 'orders.id')
+    .leftJoin('products as products', 'items.product_id', 'products.id')
+    .select(
+      'items.product_id',
+      'items.product_name',
+      'products.cost_price',
+      'products.price as product_price',
+    )
+    .avg('items.unit_price as unit_price')
+    .sum('items.quantity as quantity')
+    .sum('items.total_price as revenue')
+    .groupBy(
+      'items.product_id',
+      'items.product_name',
+      'products.cost_price',
+      'products.price',
+    )
+    .orderBy('revenue', 'desc');
+
+  applySalesJoinFilters(query, params, from, to);
+  const rows = await query;
+
+  const mapped = rows.map((row) => {
+    const quantity = Number(row.quantity) || 0;
+    const revenue = Math.round(Number(row.revenue) || 0);
+    const { cost, estimated } = resolveUnitCost({
+      cost_price: row.cost_price,
+      unit_price: row.unit_price,
+      price: row.product_price,
+    });
+    const cogs = Math.round(cost * quantity);
+    const profit = revenue - cogs;
+    const margin = revenue ? Math.round((profit / revenue) * 1000) / 10 : 0;
+    return {
+      menuItemId: row.product_id,
+      name: row.product_name,
+      quantity,
+      revenue,
+      unitCost: cost,
+      cogs,
+      profit,
+      margin,
+      estimatedCost: estimated,
+    };
+  });
+
+  const totals = mapped.reduce(
+    (acc, row) => {
+      acc.revenue += row.revenue;
+      acc.cogs += row.cogs;
+      acc.profit += row.profit;
+      return acc;
+    },
+    { revenue: 0, cogs: 0, profit: 0 },
+  );
+
+  return {
+    totals: {
+      revenue: Math.round(totals.revenue),
+      cogs: Math.round(totals.cogs),
+      profit: Math.round(totals.profit),
+      margin: totals.revenue
+        ? Math.round((totals.profit / totals.revenue) * 1000) / 10
+        : 0,
+    },
+    rows: mapped,
+  };
+}
+
+async function listPayables(params = {}) {
+  await ensureReportExtrasSchema();
+  const { from, to } = resolveDateRange(params);
+  let query = db('supplier_payables').orderBy('due_date', 'asc');
+
+  if (params.status && params.status !== 'ALL') {
+    query = query.where('status', params.status);
+  } else {
+    query = query.whereIn('status', ['open', 'partial', 'paid']);
+  }
+
+  // Include items created in range OR still open regardless of range for usefulness
+  const rows = await query;
+  const inRange = rows.filter((row) => {
+    const created = new Date(row.created_at);
+    return created >= from && created <= to;
+  });
+  const openRows = rows.filter((row) => row.status !== 'paid');
+  const list = params.includeOpen === 'false' ? inRange : [
+    ...inRange,
+    ...openRows.filter((o) => !inRange.some((r) => r.id === o.id)),
+  ];
+
+  const mapped = list.map((row) => {
+    const amount = Number(row.amount) || 0;
+    const paid = Number(row.paid_amount) || 0;
+    const balance = Math.max(0, amount - paid);
+    return {
+      id: row.id,
+      supplierName: row.supplier_name,
+      reference: row.reference,
+      amount: Math.round(amount),
+      paidAmount: Math.round(paid),
+      balance: Math.round(balance),
+      status: row.status,
+      dueDate: row.due_date,
+      notes: row.notes,
+      createdAt: row.created_at,
+    };
+  });
+
+  const totalOpen = mapped
+    .filter((r) => r.status !== 'paid')
+    .reduce((sum, r) => sum + r.balance, 0);
+
+  return {
+    totalOpen: Math.round(totalOpen),
+    count: mapped.length,
+    rows: mapped.sort((a, b) => b.balance - a.balance),
+  };
+}
+
+async function createPayable(payload = {}) {
+  await ensureReportExtrasSchema();
+  const { generateId } = require('../../utils/helpers');
+  const amount = Number(payload.amount);
+  if (!payload.supplierName || !(amount > 0)) {
+    const { BadRequestError } = require('../../errors/AppError');
+    throw new BadRequestError('Supplier name and amount are required');
+  }
+
+  const id = generateId();
+  const paidAmount = Number(payload.paidAmount || 0);
+  let status = 'open';
+  if (paidAmount >= amount) status = 'paid';
+  else if (paidAmount > 0) status = 'partial';
+
+  await db('supplier_payables').insert({
+    id,
+    supplier_name: payload.supplierName,
+    reference: payload.reference || null,
+    amount,
+    paid_amount: paidAmount,
+    status,
+    due_date: payload.dueDate || null,
+    notes: payload.notes || null,
+  });
+
+  const row = await db('supplier_payables').where({ id }).first();
+  return {
+    id: row.id,
+    supplierName: row.supplier_name,
+    reference: row.reference,
+    amount: Math.round(Number(row.amount)),
+    paidAmount: Math.round(Number(row.paid_amount)),
+    balance: Math.round(Number(row.amount) - Number(row.paid_amount)),
+    status: row.status,
+    dueDate: row.due_date,
+    notes: row.notes,
+    createdAt: row.created_at,
+  };
+}
+
+async function settlePayable(id, payload = {}) {
+  await ensureReportExtrasSchema();
+  const { NotFoundError, BadRequestError } = require('../../errors/AppError');
+  const row = await db('supplier_payables').where({ id }).first();
+  if (!row) throw new NotFoundError('Payable not found');
+
+  const amount = Number(row.amount) || 0;
+  const nextPaid = Math.min(
+    amount,
+    Number(payload.paidAmount != null ? payload.paidAmount : amount),
+  );
+  if (Number.isNaN(nextPaid) || nextPaid < 0) {
+    throw new BadRequestError('Invalid paid amount');
+  }
+
+  let status = 'open';
+  if (nextPaid >= amount) status = 'paid';
+  else if (nextPaid > 0) status = 'partial';
+
+  await db('supplier_payables').where({ id }).update({
+    paid_amount: nextPaid,
+    status,
+    updated_at: db.fn.now(),
+  });
+
+  const updated = await db('supplier_payables').where({ id }).first();
+  return {
+    id: updated.id,
+    supplierName: updated.supplier_name,
+    reference: updated.reference,
+    amount: Math.round(Number(updated.amount)),
+    paidAmount: Math.round(Number(updated.paid_amount)),
+    balance: Math.round(Number(updated.amount) - Number(updated.paid_amount)),
+    status: updated.status,
+    dueDate: updated.due_date,
+    notes: updated.notes,
+    createdAt: updated.created_at,
+  };
+}
+
 module.exports = {
   getSummary,
   getByDay,
   getByItem,
   getByCategory,
+  getCustomers,
+  getDailyClosing,
+  getCreditReport,
+  getProfitByProduct,
+  listPayables,
+  createPayable,
+  settlePayable,
+  ensureReportExtrasSchema,
   countsTowardSales,
   isOnlineDelivered,
   isInRestaurantSale,

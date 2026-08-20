@@ -36,8 +36,12 @@ server.listen(port, () => {
   console.log(`API: http://localhost:${port}/api/v1/health`);
 
   const inventoryService = require('./services/admin/inventoryService');
+  const salesService = require('./services/admin/salesService');
   inventoryService.ensureInventorySchema().catch((err) => {
     console.error('Inventory schema setup failed:', err.message);
+  });
+  salesService.ensureReportExtrasSchema().catch((err) => {
+    console.error('Reports schema setup failed:', err.message);
   });
 });
 
