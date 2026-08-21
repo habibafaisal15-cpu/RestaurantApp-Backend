@@ -29,6 +29,22 @@ const productIdsField = z.preprocess((val) => {
   return val;
 }, z.array(z.string().uuid()).nullable().optional());
 
+const tagsField = z.preprocess((val) => {
+  if (val == null || val === '' || val === 'null') return undefined;
+  if (Array.isArray(val)) return val.map((t) => String(t).trim()).filter(Boolean);
+  if (typeof val === 'string') {
+    try {
+      const parsed = JSON.parse(val);
+      if (Array.isArray(parsed)) {
+        return parsed.map((t) => String(t).trim()).filter(Boolean);
+      }
+    } catch {
+      return val.split(',').map((t) => t.trim()).filter(Boolean);
+    }
+  }
+  return undefined;
+}, z.array(z.string().min(1).max(40)).max(20).optional());
+
 const createCategorySchema = z.object({
   category_name: z.string().min(1).max(100),
   display_order: z.coerce.number().int().optional(),
@@ -64,6 +80,7 @@ const createProductSchema = z.object({
   available_for_delivery: boolish.optional(),
   in_stock: boolish.optional(),
   is_active: boolish.optional(),
+  tags: tagsField,
 });
 
 const updateProductSchema = z
@@ -76,6 +93,7 @@ const updateProductSchema = z
     available_for_delivery: boolish.optional(),
     in_stock: boolish.optional(),
     is_active: boolish.optional(),
+    tags: tagsField,
   })
   .refine((data) => Object.keys(data).length > 0, {
     message: 'Provide at least one field to update',

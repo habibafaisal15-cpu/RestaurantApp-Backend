@@ -7,6 +7,28 @@ const { UPLOAD_ROOT } = require('../../config/upload');
 const { parseProductIds } = require('../../utils/menuBuilder');
 const menuService = require('./menuService');
 
+let tagsColumnReady = null;
+let tagsEnsurePromise = null;
+
+async function ensureTagsColumn() {
+  if (tagsEnsurePromise) return tagsEnsurePromise;
+  tagsEnsurePromise = (async () => {
+    const hasTags = await db.schema.hasColumn('products', 'tags');
+    if (!hasTags) {
+      await db.schema.alterTable('products', (table) => {
+        table.json('tags').nullable();
+      });
+    }
+    tagsColumnReady = true;
+  })();
+  return tagsEnsurePromise;
+}
+
+function normalizeTags(value) {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.map((t) => String(t).trim()).filter(Boolean))];
+}
+
 function imagePathFromFile(folder, file) {
   return `/uploads/${folder}/${file.filename}`;
 }
@@ -65,6 +87,7 @@ async function updateCategory(id, payload) {
 }
 
 async function createProduct(payload, file) {
+  await ensureTagsColumn();
   await ensureCategoryExists(payload.category_id);
 
   const id = uuidv4();
@@ -72,7 +95,7 @@ async function createProduct(payload, file) {
     ? imagePathFromFile('products', file)
     : payload.image_url || null;
 
-  await db('products').insert({
+  const row = {
     id,
     category_id: payload.category_id,
     name: payload.name,
@@ -82,12 +105,19 @@ async function createProduct(payload, file) {
     available_for_delivery: payload.available_for_delivery ?? true,
     in_stock: payload.in_stock ?? true,
     is_active: payload.is_active ?? true,
-  });
+  };
+
+  if (payload.tags !== undefined) {
+    row.tags = JSON.stringify(normalizeTags(payload.tags));
+  }
+
+  await db('products').insert(row);
 
   return menuService.getMenuItemById(id);
 }
 
 async function updateProduct(id, payload, file) {
+  await ensureTagsColumn();
   const existing = await db('products').where({ id }).first();
   if (!existing) throw new NotFoundError('Menu item not found');
 
@@ -105,6 +135,9 @@ async function updateProduct(id, payload, file) {
   }
   if (payload.in_stock !== undefined) updates.in_stock = payload.in_stock;
   if (payload.is_active !== undefined) updates.is_active = payload.is_active;
+  if (payload.tags !== undefined) {
+    updates.tags = JSON.stringify(normalizeTags(payload.tags));
+  }
 
   if (file) {
     deleteLocalImage(existing.image_url);
@@ -257,6 +290,7 @@ async function deleteDeal(id) {
 }
 
 module.exports = {
+  ensureTagsColumn,
   createCategory,
   updateCategory,
   createProduct,

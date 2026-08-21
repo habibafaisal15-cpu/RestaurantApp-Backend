@@ -1,6 +1,23 @@
 const db = require('../../config/database');
 const { NotFoundError } = require('../../errors/AppError');
 
+function parseTags(value) {
+  if (Array.isArray(value)) {
+    return value.map((t) => String(t).trim()).filter(Boolean);
+  }
+  if (typeof value === 'string' && value.trim()) {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) {
+        return parsed.map((t) => String(t).trim()).filter(Boolean);
+      }
+    } catch {
+      return value.split(',').map((t) => t.trim()).filter(Boolean);
+    }
+  }
+  return [];
+}
+
 function formatProduct(row, categoryName) {
   const inStock = Boolean(row.in_stock);
   const availableForDelivery = Boolean(row.available_for_delivery);
@@ -25,6 +42,7 @@ function formatProduct(row, categoryName) {
     available_for_delivery: availableForDelivery,
     is_active: isActive,
     availability_status,
+    tags: parseTags(row.tags),
     stock_qty: row.stock_qty != null ? Number(row.stock_qty) : undefined,
     low_stock_threshold: row.low_stock_threshold != null ? Number(row.low_stock_threshold) : undefined,
     track_stock: row.track_stock != null ? Boolean(row.track_stock) : undefined,
